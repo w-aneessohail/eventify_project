@@ -14,7 +14,11 @@ export default function AdminLayout() {
 
   return (
     <div className="flex bg-gray-50 min-h-screen">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        panel="admin"
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
 
       <div className="flex-1 flex flex-col">
         <Topbar onToggleSidebar={() => setSidebarOpen((s) => !s)} />

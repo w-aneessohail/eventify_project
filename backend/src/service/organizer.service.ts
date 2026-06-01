@@ -1,6 +1,27 @@
 import { Repository } from "typeorm";
 import { Organizer } from "../entity/organizer.entity";
 
+/** Map API/frontend payload to entity columns (avoids stray fields breaking TypeORM). */
+export function normalizeOrganizerPayload(
+  data: Record<string, unknown> & { user?: unknown }
+): Partial<Organizer> {
+  const organizationName = String(
+    data.organizationName ?? data.organizerName ?? ""
+  ).trim();
+  const organizerName = String(
+    data.organizerName ?? data.organizationName ?? organizationName
+  ).trim();
+
+  return {
+    organizationName,
+    organizerName,
+    cnic: String(data.cnic ?? "").trim(),
+    phone: String(data.phone ?? "").trim(),
+    address: String(data.address ?? "").trim(),
+    ...(data.user ? { user: data.user as Organizer["user"] } : {}),
+  };
+}
+
 export class OrganizerService {
   constructor(private organizerRepository: Repository<Organizer>) {}
 
@@ -18,7 +39,9 @@ export class OrganizerService {
   }
 
   async createOrganizer(organizerData: Partial<Organizer>): Promise<Organizer> {
-    const organizer = this.organizerRepository.create(organizerData);
+    const organizer = this.organizerRepository.create(
+      normalizeOrganizerPayload(organizerData as Record<string, unknown>)
+    );
     return this.organizerRepository.save(organizer);
   }
 
@@ -33,7 +56,10 @@ export class OrganizerService {
 
     if (!organizer) return null;
 
-    this.organizerRepository.merge(organizer, organizerData);
+    this.organizerRepository.merge(
+      organizer,
+      normalizeOrganizerPayload(organizerData as Record<string, unknown>)
+    );
     return this.organizerRepository.save(organizer);
   }
 

@@ -4,17 +4,28 @@ import { NavLink } from "react-router-dom";
 import { Home, CalendarPlus, Calendar, Star, LogOut, X } from "lucide-react";
 import { RoutePath } from "@/enum/routePath";
 
-export default function Sidebar({ isOpen, onClose }) {
-  const nav = [
-    { to: RoutePath.ORGANIZER_DASHBOARD, label: "Dashboard", icon: Home },
-    {
-      to: RoutePath.ORGANIZER_POST_EVENT,
-      label: "Post an Event",
-      icon: CalendarPlus,
-    },
-    { to: RoutePath.ORGANIZER_BOOKINGS, label: "Bookings", icon: Calendar },
-    { to: RoutePath.ORGANIZER_REVIEWS, label: "Reviews", icon: Star },
-  ];
+const ORGANIZER_NAV = [
+  { to: RoutePath.ORGANIZER_DASHBOARD, label: "Dashboard", icon: Home },
+  {
+    to: RoutePath.ORGANIZER_POST_EVENT,
+    label: "Post an Event",
+    icon: CalendarPlus,
+  },
+  { to: RoutePath.ORGANIZER_BOOKINGS, label: "Bookings", icon: Calendar },
+  { to: RoutePath.ORGANIZER_REVIEWS, label: "Reviews", icon: Star },
+];
+
+const ADMIN_NAV = [
+  { to: RoutePath.ADMIN_DASHBOARD, label: "Dashboard", icon: Home },
+  { to: RoutePath.ADMIN_BOOKINGS, label: "Bookings", icon: Calendar },
+  { to: RoutePath.ADMIN_REVIEWS, label: "Reviews", icon: Star },
+];
+
+export default function Sidebar({ isOpen, onClose, panel = "organizer" }) {
+  const isAdmin = panel === "admin";
+  const nav = isAdmin ? ADMIN_NAV : ORGANIZER_NAV;
+  const panelLabel = isAdmin ? "Admin Panel" : "Organizer Panel";
+  const logoutPath = isAdmin ? RoutePath.ADMIN_LOGOUT : RoutePath.ORGANIZER_LOGOUT;
 
   return (
     <>
@@ -38,9 +49,7 @@ export default function Sidebar({ isOpen, onClose }) {
           } md:translate-x-0 md:block`}
         role="navigation"
         aria-label="Main"
-        // NOTE: do NOT set h-screen here for desktop; we let the flow determine height
       >
-        {/* Use a column flex layout so footer can be pinned */}
         <div className="flex flex-col h-full min-h-full">
           {/* Mobile header with close */}
           <div className="px-4 py-3 md:hidden flex items-center justify-between border-b border-white/10">
@@ -67,7 +76,7 @@ export default function Sidebar({ isOpen, onClose }) {
               </div>
               <div>
                 <div className="text-sm font-semibold">EVENTIFY</div>
-                <div className="text-xs text-white/80">Admin Panel</div>
+                <div className="text-xs text-white/80">{panelLabel}</div>
               </div>
             </div>
 
@@ -103,11 +112,10 @@ export default function Sidebar({ isOpen, onClose }) {
             </div>
             <div className="flex-1">
               <div className="text-lg font-semibold">EVENTIFY</div>
-              <div className="text-xs text-white/80">Admin Panel</div>
+              <div className="text-xs text-white/80">{panelLabel}</div>
             </div>
           </div>
 
-          {/* Nav - flex-1 so it grows and can scroll independently */}
           <nav className="flex-1 px-2 py-6 space-y-2 overflow-auto">
             {nav.map((item) => (
               <NavLink
@@ -128,10 +136,9 @@ export default function Sidebar({ isOpen, onClose }) {
             ))}
           </nav>
 
-          {/* Footer pinned to bottom of sidebar */}
           <div className="px-4 py-4 border-t border-white/5">
             <NavLink
-              to={RoutePath.ORGANIZER_LOGOUT}
+              to={logoutPath}
               onClick={onClose}
               className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-150 text-white/90 hover:bg-white hover:text-sky-700 no-underline"
             >

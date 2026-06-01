@@ -1,10 +1,12 @@
-import { IsNumber, IsNotEmpty, IsEnum } from "class-validator";
-
-export enum PaymentStatus {
-  PENDING = "pending",
-  COMPLETED = "completed",
-  FAILED = "failed",
-}
+import {
+  IsNumber,
+  IsNotEmpty,
+  IsEnum,
+  IsOptional,
+  IsString,
+} from "class-validator";
+import { PaymentMethod } from "../../enum/paymentMethod.enum";
+import { PaymentStatus } from "../../enum/paymentStatus.enum";
 
 export class CreatePaymentDto {
   @IsNumber({}, { message: "Booking ID must be a number" })
@@ -13,6 +15,14 @@ export class CreatePaymentDto {
   @IsNumber({}, { message: "Amount must be a number" })
   amount: number;
 
+  @IsEnum(PaymentMethod, { message: "Invalid payment method" })
+  method: PaymentMethod;
+
+  @IsString()
+  @IsNotEmpty({ message: "Transaction ID is required" })
+  transactionId: string;
+
   @IsEnum(PaymentStatus, { message: "Invalid payment status" })
-  status: PaymentStatus;
+  @IsOptional()
+  status?: PaymentStatus;
 }

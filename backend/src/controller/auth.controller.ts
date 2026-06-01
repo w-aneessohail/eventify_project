@@ -9,6 +9,7 @@ import OtpTokens from "../helper/otp.helper";
 import Mailer from "../helper/mailer.helper";
 import { OtpPurpose } from "../enum/otpPurpose.enum";
 import { UserRole } from "../enum/userRole.enum";
+import { toSafeUser } from "../dto/response/user.response.dto";
 
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -18,6 +19,12 @@ export class AuthController {
     const { email, password, role, organizerDetails } = req.body;
 
     try {
+      if (role === UserRole.ADMIN) {
+        return res.status(403).json({
+          message: "Admin accounts cannot be registered publicly",
+        });
+      }
+
       const existing = await userRepository.findByEmail(email);
 
       if (existing) {
@@ -63,7 +70,7 @@ export class AuthController {
 
       if (role === UserRole.ORGANIZER && organizerDetails) {
         await organizerRepository.createOrganizer({
-          ...organizerDetails,
+          ...(organizerDetails as Record<string, unknown>),
           user,
         });
       }
@@ -85,8 +92,10 @@ export class AuthController {
         console.log("Failed to send OTP:", (err as Error).message);
       }
 
+      const userWithOrganizer = await userRepository.findById(user.id);
+
       return res.status(201).json({
-        user,
+        user: toSafeUser(userWithOrganizer ?? user),
         message: "User created successfully. OTP sent to email.",
       });
     } catch (error) {
@@ -132,7 +141,11 @@ export class AuthController {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    res.status(200).json({ user, message: "Login successful" });
+    const userWithOrganizer = await userRepository.findByEmail(email);
+
+    res
+      .status(200)
+      .json({ user: toSafeUser(userWithOrganizer ?? user), message: "Login successful" });
   }
 
   static async refreshToken(req: Request, res: Response) {
@@ -222,8 +235,10 @@ export class AuthController {
 
     await userRepository.updateUser(user.id, { isVerified: true });
 
+    const verifiedUser = await userRepository.findById(user.id);
+
     return res.status(200).json({
-      user,
+      user: toSafeUser(verifiedUser ?? user),
       message: "Email verified successfully",
     });
   }

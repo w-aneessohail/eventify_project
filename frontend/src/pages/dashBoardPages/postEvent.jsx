@@ -48,9 +48,7 @@ const validationSchema = Yup.object({
       return Number(value) <= Number(totalTickets);
     }),
   category: Yup.string().required("Please select a category"),
-  images: Yup.array()
-    .min(1, "Please upload at least one image")
-    .required("Please upload at least one image"),
+  images: Yup.array().optional(),
 });
 
 export default function PostEvent() {
@@ -104,45 +102,34 @@ export default function PostEvent() {
     setPreviewImages(previews);
   };
 
-  /**
-   * Upload images using your multer routes:
-   * - if single file -> POST /upload/eventImage (field name: eventImage)
-   * - if multiple -> POST /upload/eventImages (field name: eventImages)
-   *
-   * Returns the server response image objects (array for multiple, normalized to array).
-   */
-  async function uploadImages(files) {
-    if (!files || !files.length) return [];
+  /** Upload images after the event exists (backend requires eventId). */
+  async function uploadImages(files, eventId) {
+    if (!files?.length || !eventId) return [];
 
-    // single file -> use single endpoint
+    const eventIdStr = String(eventId);
+
     if (files.length === 1) {
       const fd = new FormData();
-      // field name expected by your route is "eventImage"
       fd.append("eventImage", files[0]);
+      fd.append("eventId", eventIdStr);
 
-      // IMPORTANT: do not set Content-Type header manually
       const resp = await fetchData({
         url: "/upload/eventImage",
         method: HttpMethod.POST,
         data: fd,
       });
 
-      // support various response shapes: resp, resp.data, resp.image, resp.images
-      const payload = resp?.data ?? resp ?? {};
-      // if server returns the created image object directly, normalize to array
-      if (Array.isArray(payload)) return payload;
-      if (payload.image) return Array.isArray(payload.image) ? payload.image : [payload.image];
-      if (payload.images) return Array.isArray(payload.images) ? payload.images : [payload.images];
-      // fallback: if resp contains path/url fields
-      if (payload.url || payload.path || payload.filename) return [payload];
-      // if nothing, return []
-      return [];
+      if (!resp?.success) {
+        throw new Error(resp?.message || "Failed to upload event image");
+      }
+
+      const img = resp?.data;
+      return img ? [img] : [];
     }
 
-    // multiple files -> use array endpoint (max 10 in your route)
     const fd = new FormData();
-    // field name expected is "eventImages"
     files.forEach((f) => fd.append("eventImages", f));
+    fd.append("eventId", eventIdStr);
 
     const resp = await fetchData({
       url: "/upload/eventImages",
@@ -150,15 +137,12 @@ export default function PostEvent() {
       data: fd,
     });
 
-    const payload = resp?.data ?? resp ?? {};
-    if (Array.isArray(payload)) return payload;
-    if (payload.images) return Array.isArray(payload.images) ? payload.images : [payload.images];
-    if (payload.image) return Array.isArray(payload.image) ? payload.image : [payload.image];
-    // fallback: if server returns object with file list under 'files'
-    if (payload.files && Array.isArray(payload.files)) return payload.files;
-    // fallback: single object
-    if (payload.url || payload.path || payload.filename) return [payload];
-    return [];
+    if (!resp?.success) {
+      throw new Error(resp?.message || "Failed to upload event images");
+    }
+
+    const images = resp?.data?.images;
+    return Array.isArray(images) ? images : [];
   }
 
   const handleSubmit = async (values, { setSubmitting, resetForm }) => {
@@ -166,11 +150,13 @@ export default function PostEvent() {
       setSubmitting(true);
       setLoadingSubmit(true);
 
-      // 1) Upload images first (use your multer routes)
-      const uploadedImages = await uploadImages(values.images || []);
+      const organizerId = user?.organizers?.id;
+      if (!organizerId) {
+        throw new Error(
+          "Organizer profile not found. Please log in again as an organizer."
+        );
+      }
 
-      // 2) Build event payload (JSON). Include images as returned by upload route.
-      // Adjust field names to match your backend event create shape.
       const payload = {
         title: values.title,
         description: values.description,
@@ -180,14 +166,10 @@ export default function PostEvent() {
         totalTickets: Number(values.totalTickets || 0),
         availableTickets: Number(values.availableTickets || 0),
         status: "pending",
-        // include organizer info if available
-        organizer: (user && (user.organizers?.id || user.id)) ? { id: Number(user.organizers?.id ?? user.id) } : undefined,
+        organizer: { id: Number(organizerId) },
         category: values.category ? { id: Number(values.category) } : undefined,
-        // include uploaded images (send array; backend should accept this shape)
-        images: uploadedImages, // your backend should accept array of image objects or urls
       };
 
-      // 3) Create the event
       const createResp = await fetchData({
         url: "/events",
         method: HttpMethod.POST,
@@ -195,9 +177,24 @@ export default function PostEvent() {
       });
 
       const createdEvent = createResp?.data ?? createResp;
-      if (!createdEvent) throw new Error("Failed to create event");
+      if (!createdEvent?.id) throw new Error("Failed to create event");
 
-      // 4) Success feedback
+      let uploadedImages = [];
+      if (values.images?.length) {
+        try {
+          uploadedImages = await uploadImages(values.images, createdEvent.id);
+        } catch (uploadErr) {
+          await MySwal.fire({
+            title: "Event created — image upload failed",
+            text:
+              uploadErr?.message ||
+              "The event was saved but images could not be uploaded.",
+            icon: "warning",
+            confirmButtonText: "OK",
+          });
+        }
+      }
+
       await MySwal.fire({
         title: "Event Posted",
         html: `<strong>${createdEvent.title ?? values.title}</strong><br/>Your event is posted and pending approval.`,
@@ -205,8 +202,9 @@ export default function PostEvent() {
         confirmButtonText: "OK",
       });
 
-      // Show previews based on server returned images (if any)
-      const serverImgs = createdEvent.images ?? uploadedImages;
+      const serverImgs = createdEvent.images?.length
+        ? createdEvent.images
+        : uploadedImages;
       setPreviewImages(
         Array.isArray(serverImgs) ? serverImgs.map((it) => it.url ?? it.path ?? it.filename ?? it) : []
       );
@@ -311,7 +309,7 @@ export default function PostEvent() {
 
                 {/* Images */}
                 <div className="lg:col-span-3 sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">Event Images *</label>
+                  <label className="block text-sm font-medium text-gray-700">Event Images (optional)</label>
                   <input type="file" multiple accept="image/*" onChange={(e) => handleImageChange(e, setFieldValue)} className="mt-1 block w-full border rounded px-3 py-2" />
                   <ErrorMessage name="images" component="div" className="text-xs text-red-600 mt-1" />
                   {previewImages.length > 0 && (

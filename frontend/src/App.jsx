@@ -78,9 +78,9 @@ const App = () => (
               <Route
                 path="payment/:bookingId"
                 element={
-                  // <ProtectedRoute>
-                  <PaymentPage />
-                  // </ProtectedRoute>
+                  <ProtectedRoute requiredRole={UserRole.ATTENDEE}>
+                    <PaymentPage />
+                  </ProtectedRoute>
                 }
               />
             </Route>

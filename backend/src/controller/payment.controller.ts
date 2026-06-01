@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { paymentRepository, bookingRepository } from "../repository";
+import { PaymentStatus } from "../enum/paymentStatus.enum";
 
 export class PaymentController {
   static async getAllPayments(req: Request, res: Response) {
@@ -26,7 +27,7 @@ export class PaymentController {
 
   static async createPayment(req: Request, res: Response) {
     try {
-      const { amount, method, transactionId, bookingId } = req.body;
+      const { amount, method, transactionId, bookingId, status } = req.body;
 
       const booking = await bookingRepository.findById(bookingId);
       if (!booking)
@@ -36,6 +37,7 @@ export class PaymentController {
         amount,
         method,
         transactionId,
+        status: status ?? PaymentStatus.PENDING,
         booking,
       });
 

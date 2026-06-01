@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { userRepository, organizerRepository } from "../repository";
 import { UserRole } from "../enum/userRole.enum";
+import { toSafeUser } from "../dto/response/user.response.dto";
 
 export class UserController {
   static async getAllUsers(req: Request, res: Response) {
@@ -11,7 +12,7 @@ export class UserController {
         Number(skip),
         Number(limit)
       );
-      res.status(200).json(users);
+      res.status(200).json(users.map((u) => toSafeUser(u)));
     } catch (error) {
       console.error("Error fetching users:", error);
       res.status(500).json({ message: "Error fetching users" });
@@ -26,7 +27,7 @@ export class UserController {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json(user);
+    res.status(200).json(toSafeUser(user));
   }
 
   static async createUser(req: Request, res: Response) {
@@ -48,14 +49,14 @@ export class UserController {
         });
         return res.status(200).json({
           message: "Organizer created successfully, wait for approval",
-          newUser,
+          newUser: toSafeUser(newUser),
           newOrganizer,
         });
       }
 
       res.status(201).json({
         message: "User created successfully",
-        user: newUser,
+        user: toSafeUser(newUser),
       });
     } catch (error) {
       console.error("Error creating user:", error);
@@ -79,7 +80,7 @@ export class UserController {
       }
 
       const userWithOrganizer = await userRepository.findById(id);
-      res.status(200).json(userWithOrganizer);
+      res.status(200).json(toSafeUser(userWithOrganizer));
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Error updating user" });
@@ -104,16 +105,20 @@ export class UserController {
 
   static async getLoggedInUser(req: Request, res: Response) {
     try {
-      const user = req.headers["user"] as any;
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
 
-      const foundUser = await userRepository.findById(user.Id);
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const foundUser = await userRepository.findById(tokenUser.id);
 
       if (!foundUser) {
         return res.status(404).json({ message: "User not found" });
       }
 
       res.status(200).json({
-        user: foundUser,
+        user: toSafeUser(foundUser),
         isLoggedIn: true,
         message: "User details fetched successfully",
       });

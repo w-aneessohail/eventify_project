@@ -23,7 +23,7 @@ const Register = () => {
       .email("Invalid email address")
       .required("Email is required"),
     role: Yup.string()
-      .oneOf([UserRole.ADMIN, UserRole.ATTENDEE, UserRole.ORGANIZER])
+      .oneOf([UserRole.ATTENDEE, UserRole.ORGANIZER])
       .required("Role is required"),
     password: Yup.string()
       .min(8, "Must be at least 8 characters")
@@ -194,7 +194,6 @@ const Register = () => {
                     onBlur={formik.handleBlur}
                     className="w-full pl-3 pr-3 py-2.5 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                   >
-                    <option value={UserRole.ADMIN}>Admin</option>
                     <option value={UserRole.ATTENDEE}>Attendee</option>
                     <option value={UserRole.ORGANIZER}>Organizer</option>
                   </select>

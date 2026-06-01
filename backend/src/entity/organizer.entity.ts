@@ -21,6 +21,9 @@ export class Organizer {
   organizationName: string;
 
   @Column({ nullable: false })
+  organizerName: string;
+
+  @Column({ nullable: false })
   cnic: string;
 
   @Column({ nullable: false })
