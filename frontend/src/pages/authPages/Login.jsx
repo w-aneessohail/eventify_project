@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, X } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import Swal from "sweetalert2";
@@ -27,8 +27,26 @@ const performLogin = async (email, password, fetchData) => {
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo;
   const { setUser, setInitialized } = useAuth();
   const { fetchData, error, loading, response } = useAxios();
+
+  const getPostLoginPath = (user) => {
+    if (
+      returnTo &&
+      typeof returnTo === "string" &&
+      returnTo.startsWith("/") &&
+      user.role === UserRole.ATTENDEE &&
+      returnTo.startsWith(RoutePath.ATTENDEE)
+    ) {
+      return returnTo;
+    }
+    if (user.role === UserRole.ATTENDEE) return RoutePath.ATTENDEE;
+    if (user.role === UserRole.ORGANIZER) return RoutePath.ORGANIZER_DASHBOARD;
+    if (user.role === UserRole.ADMIN) return RoutePath.ADMIN_DASHBOARD;
+    return RoutePath.ATTENDEE;
+  };
 
   useEffect(() => {
     if (response?.user) {
@@ -36,16 +54,9 @@ const Login = () => {
       console.log("[v0] Login successful, user:", user);
       setUser(user);
       setInitialized(true);
-
-      if (user.role === UserRole.ATTENDEE) {
-        navigate(RoutePath.ATTENDEE, { replace: true });
-      } else if (user.role === UserRole.ORGANIZER) {
-        navigate(RoutePath.ORGANIZER_DASHBOARD, { replace: true });
-      } else if (user.role === UserRole.ADMIN) {
-        navigate(RoutePath.ADMIN_DASHBOARD, { replace: true });
-      }
+      navigate(getPostLoginPath(user), { replace: true });
     }
-  }, [response, navigate, setUser, setInitialized]);
+  }, [response, navigate, setUser, setInitialized, returnTo]);
 
   const validationSchema = Yup.object({
     email: Yup.string()

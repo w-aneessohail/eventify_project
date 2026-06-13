@@ -1,10 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
+import { Link, useParams, useLocation } from "react-router-dom";
 import { RoutePath } from "@/enum/routePath";
 import useAxios from "@/hooks/useAxios";
 import { useState, useEffect } from "react";
+import EventCard from "@/components/EventCard";
 
 const Categories = () => {
   const { fetchData, loading } = useAxios();
@@ -12,7 +13,11 @@ const Categories = () => {
 
   useEffect(() => {
     const loadCategories = async () => {
-      const result = await fetchData({ url: "/categories", method: "get" });
+      const result = await fetchData({
+        url: "/categories",
+        method: "get",
+        params: { limit: 50 },
+      });
       if (Array.isArray(result)) {
         setCategories(result);
       }
@@ -22,7 +27,6 @@ const Categories = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <section className="relative bg-concert-blue text-white py-20">
         <div className="absolute inset-0 bg-gradient-to-br from-concert-blue to-concert-blue/80"></div>
         <div className="container mx-auto px-4 relative z-10">
@@ -42,11 +46,14 @@ const Categories = () => {
         </div>
       </section>
 
-      {/* Categories Grid */}
       <section className="container mx-auto px-4 py-16">
         {loading ? (
           <div className="flex justify-center items-center min-h-96">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="flex justify-center items-center min-h-96">
+            <p className="text-muted-foreground text-lg">No categories found.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -65,25 +72,17 @@ const Categories = () => {
                   state={{ categoryName: category.name }}
                 >
                   <div className="group cursor-pointer">
-                    <div className="relative rounded-2xl overflow-hidden mb-4 h-64 hover-lift">
-                      <img
-                        src={category.image || "/placeholder.svg"}
-                        alt={category.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
+                    <div className="relative rounded-2xl overflow-hidden mb-4 h-64 hover-lift bg-primary/10 flex items-center justify-center">
+                      <span className="text-4xl font-bold text-primary/40">
+                        {category.name?.charAt(0) || "?"}
+                      </span>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent"></div>
                       <div className="absolute bottom-0 left-0 right-0 p-6">
                         <h3 className="text-white font-bold text-2xl mb-1">
                           {category.name}
                         </h3>
-                        <p className="text-white/80 text-sm">
-                          {category.eventCount || "Events"}
-                        </p>
                       </div>
                     </div>
-                    <p className="text-muted-foreground text-sm">
-                      {category.description}
-                    </p>
                     <button className="mt-3 w-full bg-primary/10 text-primary py-2.5 rounded-lg hover:bg-primary hover:text-white transition-colors font-medium">
                       View Events
                     </button>

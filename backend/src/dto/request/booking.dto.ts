@@ -1,22 +1,13 @@
-import { IsNumber, IsEnum, IsOptional } from "class-validator";
-import { PaymentStatus } from "../../enum/paymentStatus.enum";
+import { IsNumber, IsEnum, IsOptional, Min } from "class-validator";
+import { BookingStatus } from "../../enum/bookingStatus.enum";
 
 export class CreateBookingDto {
   @IsNumber({}, { message: "Event ID must be a number" })
   eventId: number;
 
-  @IsNumber({}, { message: "Attendee ID must be a number" })
-  attendeeId: number;
-
   @IsNumber({}, { message: "Quantity must be a number" })
+  @Min(1, { message: "Quantity must be at least 1" })
   quantity: number;
-
-  @IsNumber({}, { message: "Total amount must be a number" })
-  totalAmount: number;
-
-  @IsEnum(PaymentStatus, { message: "Invalid booking status" })
-  @IsOptional()
-  status?: PaymentStatus;
 }
 
 export class UpdateBookingDto {
@@ -25,10 +16,6 @@ export class UpdateBookingDto {
   quantity?: number;
 
   @IsOptional()
-  @IsNumber({}, { message: "Total amount must be a number" })
-  totalAmount?: number;
-
-  @IsOptional()
-  @IsEnum(PaymentStatus, { message: "Invalid booking status" })
-  status?: PaymentStatus;
+  @IsEnum(BookingStatus, { message: "Invalid booking status" })
+  status?: BookingStatus;
 }

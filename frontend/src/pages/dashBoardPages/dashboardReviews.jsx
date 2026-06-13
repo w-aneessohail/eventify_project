@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import useAxios from "@/hooks/useAxios";
 import { HttpMethod } from "@/enum/httpMethod";
+import { API_LIST_LIMIT } from "@/utils/eventHelpers";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 
@@ -68,7 +69,11 @@ export default function OrganizerEventReviews() {
 
     try {
       // 1) fetch reviews (accept various shapes)
-      const res = await fetchData({ url: "/event-reviews", method: HttpMethod.GET });
+      const res = await fetchData({
+        url: "/event-reviews",
+        method: HttpMethod.GET,
+        params: { limit: API_LIST_LIMIT },
+      });
       const reviewsRaw = Array.isArray(res) ? res : res?.data ?? res?.reviews ?? res ?? [];
       if (!Array.isArray(reviewsRaw)) throw new Error("Unexpected response from /event-reviews");
 

@@ -9,6 +9,12 @@ import { UpdateBookingValidator } from "../middleware/validator/updateBooking.va
 const Router = express.Router();
 
 Router.get(
+  "/bookings/me",
+  authentication,
+  authorization([UserRole.ATTENDEE]),
+  BookingController.getMyBookings
+);
+Router.get(
   "/bookings",
   authentication,
   authorization([UserRole.ADMIN, UserRole.ORGANIZER]),

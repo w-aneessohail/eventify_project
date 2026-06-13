@@ -1,14 +1,24 @@
 "use client";
 
 import { Link, useNavigate } from "react-router-dom";
-import { ShoppingCart } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useState, useEffect, useRef, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { RoutePath } from "@/enum/routePath";
 import { AuthContext } from "@/context/AuthContext";
 
+const NAV_LINKS = [
+  { to: RoutePath.HOME, label: "Home" },
+  { to: RoutePath.ATTENDEE_ALL_EVENTS, label: "Events" },
+  { to: RoutePath.ATTENDEE_CATEGORIES, label: "Categories" },
+  { to: RoutePath.ATTENDEE_CONTACT, label: "Contact Us" },
+  { to: RoutePath.ATTENDEE_ABOUT, label: "About Us" },
+  { to: RoutePath.ATTENDEE_REVIEWS, label: "Reviews" },
+];
+
 const Navbar = () => {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const menuRef = useRef(null);
 
@@ -89,48 +99,34 @@ const Navbar = () => {
             </span>
           </Link>
 
-          {/* Navigation Links */}
+          {/* Desktop navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <Link
-              to={RoutePath.HOME}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              Home
-            </Link>
-            <Link
-              to={RoutePath.ATTENDEE_ALL_EVENTS}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              Events
-            </Link>
-            <Link
-              to={RoutePath.ATTENDEE_CATEGORIES}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              Categories
-            </Link>
-            <Link
-              to={RoutePath.ATTENDEE_CONTACT}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              Contact Us
-            </Link>
-            <Link
-              to={RoutePath.ATTENDEE_ABOUT}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              About Us
-            </Link>
-            <Link
-              to={RoutePath.ATTENDEE_REVIEWS}
-              className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
-              Reviews
-            </Link>
+            {NAV_LINKS.map(({ to, label }) => (
+              <Link
+                key={to}
+                to={to}
+                className="text-foreground hover:text-primary transition-colors duration-200 font-medium"
+              >
+                {label}
+              </Link>
+            ))}
           </div>
 
           {/* Right Side Actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            <button
+              type="button"
+              className="md:hidden p-2 rounded-lg hover:bg-secondary transition-colors"
+              onClick={() => setMobileMenuOpen((open) => !open)}
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? (
+                <X className="w-6 h-6 text-foreground" />
+              ) : (
+                <Menu className="w-6 h-6 text-foreground" />
+              )}
+            </button>
             <div className="relative" ref={menuRef}>
               {/* If authenticated show avatar only, else show Login/Register */}
               {isAuthenticated && user ? (
@@ -168,6 +164,13 @@ const Navbar = () => {
                     >
                       Profile
                     </Link>
+                    <Link
+                      to={RoutePath.ATTENDEE_MY_BOOKINGS}
+                      className="block px-4 py-3 text-foreground hover:bg-secondary transition-colors"
+                      onClick={() => setShowAccountMenu(false)}
+                    >
+                      My Bookings
+                    </Link>
 
                     <div className="border-t border-border" />
 
@@ -183,6 +186,30 @@ const Navbar = () => {
             </div>
           </div>
         </div>
+
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden border-t border-border overflow-hidden"
+            >
+              <div className="py-4 flex flex-col gap-1">
+                {NAV_LINKS.map(({ to, label }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="px-2 py-3 text-foreground hover:text-primary hover:bg-secondary rounded-lg transition-colors font-medium"
+                  >
+                    {label}
+                  </Link>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </nav>
   );

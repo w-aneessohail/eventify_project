@@ -34,9 +34,10 @@
     "typeorm": "typeorm-ts-node-commonjs",
     "dev": "nodemon",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node build/index.js",
     "migration:run": "npm run typeorm migration:run -- -d ./src/data-source.ts",
     "migration:revert": "npm run typeorm migration:revert -- -d ./src/data-source.ts",
-    "migration:create": "npm run typeorm migration:create -- -d ./src/data-source.ts"
+    "migration:show": "npm run typeorm migration:show -- -d ./src/data-source.ts",
+    "seed": "ts-node src/seeds/seed.ts"
   }
 }

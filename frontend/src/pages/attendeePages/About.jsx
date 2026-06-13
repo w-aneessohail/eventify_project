@@ -14,7 +14,7 @@ const About = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <h1 className="text-5xl font-bold mb-4">About Us</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
-            Learn more about TICKETER and our mission to bring you the best live experiences
+            Learn more about Eventify and our mission to bring you the best live experiences in Pakistan
           </p>
         </motion.div>
       </section>
@@ -29,7 +29,7 @@ const About = () => {
         >
           <h2 className="text-3xl font-bold mb-6">Who We Are</h2>
           <p className="text-muted-foreground leading-relaxed mb-8">
-            Ticketer is a global ticketing platform for live experiences that allows anyone to create, share, find and
+            Eventify is a Pakistan-focused ticketing platform for live experiences that allows anyone to create, share, find and
             attend events that fuel their passions and enrich their lives. We connect millions of event organizers and
             attendees across various categories including concerts, sports, comedy shows, and more.
           </p>

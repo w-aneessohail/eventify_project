@@ -1,6 +1,7 @@
 import * as express from "express";
 import { EventController } from "../controller/event.controller";
 import { authentication } from "../middleware/authentication";
+import { optionalAuthentication } from "../middleware/optionalAuthentication";
 import { authorization } from "../middleware/authorization";
 import { UserRole } from "../enum/userRole.enum";
 import { CreateEventValidator } from "../middleware/validator/createEvent.validator";
@@ -8,8 +9,8 @@ import { UpdateEventValidator } from "../middleware/validator/updateEvent.valida
 
 const Router = express.Router();
 
-Router.get("/events", EventController.getAllEvents);
-Router.get("/events/:id", EventController.getEventById);
+Router.get("/events", optionalAuthentication, EventController.getAllEvents);
+Router.get("/events/:id", optionalAuthentication, EventController.getEventById);
 Router.post(
   "/events",
   authentication,

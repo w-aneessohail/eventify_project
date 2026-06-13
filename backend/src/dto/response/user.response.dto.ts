@@ -5,7 +5,7 @@ export class UserResponseDto {
   role: string;
   isVerified: boolean;
   profileImage?: string | null;
-  organizers?: unknown;
+  organizer?: unknown;
 
   constructor(user: any) {
     this.id = user.id;
@@ -14,8 +14,8 @@ export class UserResponseDto {
     this.role = user.role;
     this.isVerified = user.isVerified;
     this.profileImage = user.profileImage ?? null;
-    if (user.organizers) {
-      this.organizers = user.organizers;
+    if (user.organizer) {
+      this.organizer = user.organizer;
     }
   }
 }

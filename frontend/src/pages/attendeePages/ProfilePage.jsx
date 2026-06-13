@@ -10,6 +10,8 @@ import { HttpMethod } from "@/enum/httpMethod";
 import useAxios from "@/hooks/useAxios";
 import { useAuth } from "@/hooks/useAuth";
 
+import { getMediaUrl } from "@/utils/mediaUrl";
+
 const MySwal = withReactContent(Swal);
 
 const ProfileSchema = Yup.object({
@@ -30,7 +32,7 @@ const PasswordSchema = Yup.object({
 });
 
 export default function ProfilePage() {
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user: authUser, loading: authLoading, setUser: setAuthUser } = useAuth();
   const { fetchData, loading: apiLoading } = useAxios();
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
@@ -43,8 +45,8 @@ export default function ProfilePage() {
   useEffect(() => {
     if (authUser && !authLoading) {
       setUser(authUser);
-      if (authUser.avatar) {
-        setAvatarPreview(authUser.avatar);
+      if (authUser.profileImage) {
+        setAvatarPreview(getMediaUrl(authUser.profileImage));
       }
       setLoading(false);
     } else if (!authLoading && !authUser) {
@@ -75,22 +77,48 @@ export default function ProfilePage() {
   const saveProfile = async (values, { setSubmitting }) => {
     setSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append("name", values.name);
-      formData.append("email", values.email);
-      if (avatarFile) formData.append("avatar", avatarFile);
+      const userId = user.id || user._id;
+
+      if (avatarFile) {
+        const imageForm = new FormData();
+        imageForm.append("profileImage", avatarFile);
+
+        const uploadResult = await fetchData({
+          url: "/upload/profile",
+          method: HttpMethod.POST,
+          data: imageForm,
+        });
+
+        if (!uploadResult?.success) {
+          throw new Error(
+            uploadResult?.message || "Failed to upload profile image"
+          );
+        }
+
+        const uploadedUser = uploadResult.data?.user;
+        if (uploadedUser?.profileImage) {
+          setAvatarPreview(getMediaUrl(uploadedUser.profileImage));
+        }
+        setAvatarFile(null);
+      }
 
       const result = await fetchData({
-        url: `/users/${user.id || user._id}`,
+        url: `/users/${userId}`,
         method: HttpMethod.PUT,
-        data: formData,
+        data: {
+          name: values.name,
+          email: values.email,
+        },
       });
 
-      if (result && result.user) {
+      if (result?.user) {
         const updatedUser = result.user;
         if (!updatedUser.role) updatedUser.role = UserRole.ATTENDEE;
         setUser(updatedUser);
-        if (updatedUser.avatar) setAvatarPreview(updatedUser.avatar);
+        setAuthUser(updatedUser);
+        if (updatedUser.profileImage) {
+          setAvatarPreview(getMediaUrl(updatedUser.profileImage));
+        }
 
         MySwal.fire({
           title: "Saved",

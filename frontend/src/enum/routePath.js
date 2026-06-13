@@ -17,6 +17,7 @@ export const RoutePath = Object.freeze({
   ATTENDEE_CONTACT: "/attendee/contact",
   ATTENDEE_ABOUT: "/attendee/about",
   ATTENDEE_REVIEWS: "/attendee/reviews",
+  ATTENDEE_MY_BOOKINGS: "/attendee/my-bookings",
   ATTENDEE_PAYMENT: "/attendee/payment/:bookingId",
 
   // Organizer routes
@@ -31,7 +32,11 @@ export const RoutePath = Object.freeze({
   // Admin routes
   ADMIN: "/admin",
   ADMIN_DASHBOARD: "/admin/dashboard",
+  ADMIN_ORGANIZERS: "/admin/organizers",
+  ADMIN_EVENTS: "/admin/events",
   ADMIN_BOOKINGS: "/admin/bookings",
+  ADMIN_USERS: "/admin/users",
+  ADMIN_PAYMENTS: "/admin/payments",
   ADMIN_REVIEWS: "/admin/reviews",
   ADMIN_PROFILE: "/admin/profile",
   ADMIN_LOGOUT: "/admin/logout",

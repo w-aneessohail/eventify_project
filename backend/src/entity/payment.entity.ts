@@ -42,9 +42,9 @@ export class Payment {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @OneToOne(() => Booking, (booking) => booking.payments, {
+  @OneToOne(() => Booking, (booking) => booking.payment, {
     onDelete: "CASCADE",
   })
-  @JoinColumn()
+  @JoinColumn({ name: "bookingId" })
   booking: Booking;
 }

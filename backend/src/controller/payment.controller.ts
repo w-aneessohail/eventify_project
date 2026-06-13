@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
-import { paymentRepository, bookingRepository } from "../repository";
-import { PaymentStatus } from "../enum/paymentStatus.enum";
+import { paymentRepository } from "../repository";
 
 export class PaymentController {
   static async getAllPayments(req: Request, res: Response) {
@@ -25,26 +24,41 @@ export class PaymentController {
     res.status(200).json(payment);
   }
 
-  static async createPayment(req: Request, res: Response) {
+  /** Simulated checkout today; same handler future gateway webhooks will call. */
+  static async confirmPayment(req: Request, res: Response) {
     try {
-      const { amount, method, transactionId, bookingId, status } = req.body;
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
 
-      const booking = await bookingRepository.findById(bookingId);
-      if (!booking)
-        return res.status(404).json({ message: "Booking not found" });
+      const { bookingId, method } = req.body;
 
-      const newPayment = await paymentRepository.createPayment({
-        amount,
+      const result = await paymentRepository.confirmPayment({
+        bookingId: Number(bookingId),
+        attendeeId: tokenUser.id,
         method,
-        transactionId,
-        status: status ?? PaymentStatus.PENDING,
-        booking,
       });
 
-      res.status(201).json(newPayment);
+      if (!result.ok) {
+        const status =
+          result.code === "not_found"
+            ? 404
+            : result.code === "forbidden"
+              ? 403
+              : result.code === "conflict"
+                ? 409
+                : 400;
+        return res.status(status).json({ message: result.message ?? "Payment failed" });
+      }
+
+      res.status(200).json({
+        payment: result.payment,
+        booking: result.booking,
+      });
     } catch (error) {
-      console.error("Error creating payment:", error);
-      res.status(500).json({ message: "Error creating payment" });
+      console.error("Error confirming payment:", error);
+      res.status(500).json({ message: "Error processing payment" });
     }
   }
 

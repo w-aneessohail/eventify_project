@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import useAxios from "@/hooks/useAxios";
 import { HttpMethod } from "@/enum/httpMethod";
+import { API_LIST_LIMIT } from "@/utils/eventHelpers";
 
 const EVENTS_PER_PAGE = 8;
 const BOOKINGS_PER_PAGE = 6;
@@ -117,7 +118,11 @@ export default function OrganizerEventBookings() {
     (async () => {
       try {
         // 1) fetch events
-        const evResp = await fetchData({ url: "/events", method: HttpMethod.GET });
+        const evResp = await fetchData({
+          url: "/events",
+          method: HttpMethod.GET,
+          params: { limit: API_LIST_LIMIT },
+        });
         const evList = Array.isArray(evResp)
           ? evResp
           : Array.isArray(evResp?.data)
@@ -128,7 +133,11 @@ export default function OrganizerEventBookings() {
 
         // 2) fetch bookings (this endpoint requires auth in your backend)
         //    We'll fetch all bookings and then group them by eventId for fast lookup.
-        const bookingsResp = await fetchData({ url: "/bookings", method: HttpMethod.GET });
+        const bookingsResp = await fetchData({
+          url: "/bookings",
+          method: HttpMethod.GET,
+          params: { limit: API_LIST_LIMIT },
+        });
         const bookingsList = Array.isArray(bookingsResp)
           ? bookingsResp
           : Array.isArray(bookingsResp?.data)

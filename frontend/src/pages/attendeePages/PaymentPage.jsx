@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { RoutePath } from "@/enum/routePath";
@@ -11,23 +11,60 @@ const MySwal = withReactContent(Swal);
 
 const Payment = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { bookingId } = useParams();
   const { fetchData } = useAxios();
-  const booking = location.state?.booking;
+  const [booking, setBooking] = useState(null);
+  const [pageLoading, setPageLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [method, setMethod] = useState("card");
   const [paid, setPaid] = useState(false);
 
-  console.log("[v0] PaymentPage loaded - location.state:", location.state);
-  console.log("[v0] PaymentPage booking:", booking);
-  console.log("[v0] PaymentPage bookingId param:", bookingId);
+  useEffect(() => {
+    if (!bookingId) {
+      setLoadError("Invalid booking");
+      setPageLoading(false);
+      return;
+    }
 
-  if (!booking) {
+    const loadBooking = async () => {
+      setPageLoading(true);
+      setLoadError(null);
+      try {
+        const result = await fetchData({
+          url: `/bookings/${bookingId}`,
+          method: "get",
+        });
+        if (result) {
+          setBooking(result);
+        } else {
+          setLoadError("Booking not found");
+        }
+      } catch (err) {
+        setLoadError(err.message || "Failed to load booking");
+      } finally {
+        setPageLoading(false);
+      }
+    };
+
+    loadBooking();
+  }, [bookingId]);
+
+  if (pageLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
+        <p className="text-gray-600">Loading booking…</p>
+      </div>
+    );
+  }
+
+  if (loadError || !booking) {
     return (
       <div className="flex-1 flex items-center justify-center px-4 py-20">
         <div className="text-center">
-          <p className="text-lg text-gray-600 mb-4">Booking data not found</p>
+          <p className="text-lg text-gray-600 mb-4">
+            {loadError || "Booking data not found"}
+          </p>
           <button
             onClick={() => navigate(RoutePath.ATTENDEE_ALL_EVENTS)}
             className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"
@@ -57,48 +94,32 @@ const Payment = () => {
       try {
         setLoading(true);
 
-        const transactionId = `TSX_${Date.now()}_${Math.random()
-          .toString(36)
-          .substr(2, 9)}`;
-
-        console.log("[v0] Submitting payment:", {
-          amount: Number(booking.totalAmount),
-          method: method,
-          transactionId: transactionId,
-          bookingId: Number(bookingId),
-        });
-
         const paymentResult = await fetchData({
-          url: `/payments`,
+          url: `/payments/confirm`,
           method: "post",
           data: {
-            amount: Number(booking.totalAmount),
-            method: method,
-            transactionId: transactionId,
             bookingId: Number(bookingId),
+            method: method,
           },
         });
-
-        console.log("[v0] Payment result:", paymentResult);
 
         if (paymentResult) {
           setPaid(true);
           await MySwal.fire({
             title: "Payment Successful!",
-            text: "Your payment has been processed successfully.",
+            text: "Your booking is confirmed.",
             icon: "success",
             confirmButtonText: "OK",
           });
-          navigate(RoutePath.ATTENDEE_ALL_EVENTS);
+          navigate(RoutePath.ATTENDEE_MY_BOOKINGS);
         } else {
           MySwal.fire({
-            title: "Error",
-            text: "Payment failed. Please try again.",
+            title: "Payment Failed",
+            text: "Payment could not be completed. The event may be sold out or the booking is no longer valid.",
             icon: "error",
           });
         }
       } catch (err) {
-        console.log("[v0] Payment error:", err);
         MySwal.fire({
           title: "Error",
           text: err.message || "Payment processing failed",

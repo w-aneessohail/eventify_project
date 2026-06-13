@@ -21,7 +21,7 @@ export default function AdminLayout() {
       />
 
       <div className="flex-1 flex flex-col">
-        <Topbar onToggleSidebar={() => setSidebarOpen((s) => !s)} />
+        <Topbar panel="admin" onToggleSidebar={() => setSidebarOpen((s) => !s)} />
 
         <main className="flex-1 overflow-auto p-6">
           <div className="max-w-screen-xl mx-auto">

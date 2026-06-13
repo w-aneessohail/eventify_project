@@ -1,5 +1,11 @@
 import type { Repository } from "typeorm";
 import type { User } from "../entity/user.entity";
+import { UserRole } from "../enum/userRole.enum";
+import { AccessService } from "./access.service";
+
+export type UserUpdateResult =
+  | { user: User; error?: undefined }
+  | { user?: undefined; error: "not_found" | "forbidden" };
 
 export class UserService {
   constructor(private userRepository: Repository<User>) {}
@@ -8,7 +14,7 @@ export class UserService {
     return this.userRepository.find({
       where: { ...whereParams },
       relations: [
-        "organizers",
+        "organizer",
         "bookings",
         "reviews",
         "authTokens",
@@ -24,7 +30,7 @@ export class UserService {
     return this.userRepository.findOne({
       where: { id },
       relations: [
-        "organizers",
+        "organizer",
         "bookings",
         "reviews",
         "authTokens",
@@ -36,7 +42,7 @@ export class UserService {
   async findByEmail(email: string): Promise<User | null> {
     return this.userRepository.findOne({
       where: { email },
-      relations: ["organizers"],
+      relations: ["organizer"],
     });
   }
 
@@ -54,8 +60,23 @@ export class UserService {
 
     return this.userRepository.findOne({
       where: { id },
-      relations: ["organizers"],
+      relations: ["organizer"],
     });
+  }
+
+  async updateUserForActor(
+    targetId: number,
+    actorId: number,
+    actorRole: UserRole,
+    userData: Partial<User>
+  ): Promise<UserUpdateResult> {
+    if (!AccessService.canModifyUser(actorRole, actorId, targetId)) {
+      return { error: "forbidden" };
+    }
+
+    const updated = await this.updateUser(targetId, userData);
+    if (!updated) return { error: "not_found" };
+    return { user: updated };
   }
 
   async deleteUser(id: number): Promise<boolean> {

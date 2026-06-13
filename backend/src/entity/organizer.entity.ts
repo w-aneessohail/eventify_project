@@ -3,8 +3,8 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
-  ManyToOne,
   OneToMany,
+  OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
@@ -54,7 +54,7 @@ export class Organizer {
   @OneToMany(() => Event, (event) => event.organizer)
   events: Event[];
 
-  @ManyToOne(() => User, (user) => user.organizers, { onDelete: "CASCADE" })
+  @OneToOne(() => User, (user) => user.organizer, { onDelete: "CASCADE" })
   @JoinColumn()
   user: User;
 }

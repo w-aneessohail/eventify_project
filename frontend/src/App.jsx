@@ -9,7 +9,6 @@ import AttendeeLayout from "./layouts/attendeeLayout";
 import OrganizerLayout from "./layouts/organizerLayout";
 import AdminLayout from "./layouts/adminLayout";
 import ProtectedRoute from "./route/ProtectedRoute";
-import RoleBasedRedirect from "./route/RoleBasedRedirect";
 import { RoutePath } from "./enum/routePath";
 import { UserRole } from "./enum/userRole";
 
@@ -24,6 +23,7 @@ import ResetPassword from "./pages/authPages/ResetPassword";
 import Contact from "./pages/attendeePages/Contact";
 import About from "./pages/attendeePages/About";
 import ReviewsPage from "./pages/attendeePages/Reviews";
+import MyBookings from "./pages/attendeePages/MyBookings";
 import Categories from "./pages/attendeePages/Categories";
 import CategoryEvents from "./pages/attendeePages/CategoryEvents";
 import Events from "./pages/attendeePages/Events";
@@ -33,6 +33,11 @@ import PaymentPage from "./pages/attendeePages/PaymentPage";
 
 // Dashboard pages
 import Dashboard from "./pages/dashBoardPages/dashboard";
+import AdminDashboard from "./pages/dashBoardPages/adminDashboard";
+import AdminOrganizers from "./pages/dashBoardPages/adminOrganizers";
+import AdminEvents from "./pages/dashBoardPages/adminEvents";
+import AdminUsers from "./pages/dashBoardPages/adminUsers";
+import AdminPayments from "./pages/dashBoardPages/adminPayments";
 import PostEvent from "./pages/dashBoardPages/postEvent";
 import Bookings from "./pages/dashBoardPages/bookings";
 import DashboardEventReviews from "./pages/dashBoardPages/dashboardReviews";
@@ -48,8 +53,11 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            {/* Root path - redirects based on auth status and role */}
-            <Route path={RoutePath.HOME} element={<RoleBasedRedirect />} />
+            {/* Root path — public home for all visitors */}
+            <Route
+              path={RoutePath.HOME}
+              element={<Navigate to={RoutePath.ATTENDEE} replace />}
+            />
 
             {/* Auth routes - public access */}
             <Route path={RoutePath.LOGIN} element={<Login />} />
@@ -75,6 +83,14 @@ const App = () => (
               <Route path="contact" element={<Contact />} />
               <Route path="about" element={<About />} />
               <Route path="reviews" element={<ReviewsPage />} />
+              <Route
+                path="my-bookings"
+                element={
+                  <ProtectedRoute requiredRole={UserRole.ATTENDEE}>
+                    <MyBookings />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="payment/:bookingId"
                 element={
@@ -112,9 +128,13 @@ const App = () => (
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Dashboard />} />
-              <Route path="dashboard" element={<Dashboard />} />
+              <Route index element={<AdminDashboard />} />
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="organizers" element={<AdminOrganizers />} />
+              <Route path="events" element={<AdminEvents />} />
               <Route path="bookings" element={<Bookings />} />
+              <Route path="users" element={<AdminUsers />} />
+              <Route path="payments" element={<AdminPayments />} />
               <Route path="reviews" element={<DashboardEventReviews />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="logout" element={<Logout />} />

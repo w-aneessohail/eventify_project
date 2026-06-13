@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import useAxios from "@/hooks/useAxios";
 import { useAuth } from "@/hooks/useAuth";
 import { HttpMethod } from "../../enum/httpMethod";
+import { API_LIST_LIMIT } from "@/utils/eventHelpers";
 
 const PAGE_SIZE = 10;
 const MAX_PAGE_BUTTONS = 5;
@@ -33,10 +34,10 @@ export default function OrganizerStats() {
     // guard: only execute when auth finished and user exists
     if (authLoading || !user) return;
 
-    // compute organizerId robustly
-    const organizerId = (user.organizers && user.organizers.id) || user.id;
+    // Require a real organizer profile — admins use AdminDashboard instead.
+    const organizerId = user.organizer?.id;
     if (!organizerId) {
-      setError("No organizer ID found for logged-in user");
+      setError("No organizer profile found for this account");
       setLoading(false);
       return;
     }
@@ -55,6 +56,7 @@ export default function OrganizerStats() {
         const allEvents = await fetchData({
           url: "/events",
           method: HttpMethod.GET,
+          params: { limit: API_LIST_LIMIT, organizerId },
         });
 
         if (abortRef.current) return; // component unmounted/cancelled

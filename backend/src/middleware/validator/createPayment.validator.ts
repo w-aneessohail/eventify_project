@@ -1,15 +1,15 @@
 import { plainToClass } from "class-transformer";
 import { validate, type ValidationError } from "class-validator";
 import type { NextFunction, Request, Response } from "express";
-import { CreatePaymentDto } from "../../dto/request/payment.dto";
+import { ConfirmPaymentDto } from "../../dto/request/payment.dto";
 
-export const CreatePaymentValidator = async (
+export const ConfirmPaymentValidator = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const createPaymentDto = plainToClass(CreatePaymentDto, req.body);
-  const errors: ValidationError[] = await validate(createPaymentDto);
+  const dto = plainToClass(ConfirmPaymentDto, req.body);
+  const errors: ValidationError[] = await validate(dto);
 
   if (errors.length > 0) {
     const errorMessages = errors.flatMap((error) =>
@@ -20,3 +20,6 @@ export const CreatePaymentValidator = async (
     next();
   }
 };
+
+/** @deprecated Use ConfirmPaymentValidator — kept for route import compatibility */
+export const CreatePaymentValidator = ConfirmPaymentValidator;

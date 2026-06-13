@@ -13,9 +13,14 @@ import { RoutePath } from "@/enum/routePath";
 
 
 
-export default function Topbar({ onToggleSidebar }) {
+export default function Topbar({ onToggleSidebar, panel = "organizer" }) {
   const { user, isAuthenticated, logout } = useContext(AuthContext);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const navigate = useNavigate();
+
+  const isAdmin = panel === "admin";
+  const dashboardTitle = isAdmin ? "Admin Dashboard" : "Organizer Dashboard";
+  const profilePath = isAdmin ? RoutePath.ADMIN_PROFILE : RoutePath.ORGANIZER_PROFILE;
 
 
 
@@ -82,7 +87,7 @@ export default function Topbar({ onToggleSidebar }) {
         </button>
 
         <h1 className="text-lg font-semibold text-gray-800">
-          Organzier Dashboard
+          {dashboardTitle}
         </h1>
       </div>
       {/* 
@@ -132,7 +137,7 @@ export default function Topbar({ onToggleSidebar }) {
                   className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-xl border border-border overflow-hidden"
                 >
                   <Link
-                    to={RoutePath.ORGANIZER_PROFILE}
+                    to={profilePath}
                     className="block px-4 py-3 text-primary hover:bg-secondary transition-colors"
                     onClick={() => setShowAccountMenu(false)}
                   >

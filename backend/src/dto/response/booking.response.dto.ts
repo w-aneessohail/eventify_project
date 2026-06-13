@@ -5,7 +5,7 @@ export class BookingResponseDto {
   status: string;
   event?: any; // Event relation data
   attendee?: any; // Attendee (User) relation data
-  payments?: any[]; // Related payments
+  payment?: unknown;
   createdAt: string;
   updatedAt: string;
 
@@ -16,7 +16,7 @@ export class BookingResponseDto {
     this.status = booking.status ?? "pending";
     this.event = booking.event ?? null;
     this.attendee = booking.attendee ?? null;
-    this.payments = booking.payments ?? [];
+    this.payment = booking.payment ?? null;
     this.createdAt = booking.createdAt;
     this.updatedAt = booking.updatedAt;
   }

@@ -2,18 +2,21 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { Calendar, MapPin, Clock, Plus, Minus } from "lucide-react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { useAuth } from "@/hooks/useAuth";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import { Link } from "react-router-dom";
 import { RoutePath } from "@/enum/routePath";
 import useAxios from "@/hooks/useAxios";
+import { formatEventDate, getEventImageUrl } from "@/utils/mediaUrl";
+import ReviewStars from "@/components/ReviewStars";
+import {
+  formatReviewDate,
+  getReviewerName,
+} from "@/utils/reviewHelpers";
 
 const MySwal = withReactContent(Swal);
 
@@ -24,6 +27,8 @@ const EventDetails = () => {
   const { fetchData, loading } = useAxios();
   const [seats, setSeats] = useState(1);
   const [event, setEvent] = useState(null);
+  const [eventReviews, setEventReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -51,6 +56,24 @@ const EventDetails = () => {
     if (id) {
       fetchEvent();
     }
+  }, [id]);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      if (!id) return;
+      setReviewsLoading(true);
+      const result = await fetchData({
+        url: "/event-reviews",
+        method: "get",
+        params: { eventId: Number(id), limit: 20 },
+      });
+      if (Array.isArray(result)) {
+        setEventReviews(result);
+      }
+      setReviewsLoading(false);
+    };
+
+    fetchReviews();
   }, [id]);
 
   const validationSchema = Yup.object({
@@ -122,10 +145,7 @@ const EventDetails = () => {
     try {
       const bookingData = {
         eventId: parseInt(id),
-        attendeeId: user?.id,
         quantity: Number(seats),
-        totalAmount: Number(event.ticketPrice) * seats,
-        status: "pending",
       };
 
       const result = await fetchData({
@@ -191,7 +211,7 @@ const EventDetails = () => {
     <div className="min-h-screen bg-background">
       <section className="relative h-96">
         <img
-          src={event.image || "/placeholder.svg?height=400&width=1200"}
+          src={getEventImageUrl(event, "/placeholder.svg?height=400&width=1200")}
           alt={event.title}
           className="w-full h-full object-cover"
         />
@@ -227,7 +247,9 @@ const EventDetails = () => {
                     <Calendar className="w-6 h-6 text-primary mt-1" />
                     <div>
                       <p className="font-semibold">Date</p>
-                      <p className="text-muted-foreground">{event.eventDate}</p>
+                      <p className="text-muted-foreground">
+                        {formatEventDate(event.eventDate)}
+                      </p>
                     </div>
                   </div>
 
@@ -243,12 +265,56 @@ const EventDetails = () => {
                 </div>
               </div>
 
-              <div className="bg-white p-8 rounded-2xl shadow-lg">
+              <div className="bg-white p-8 rounded-2xl shadow-lg mb-8">
                 <h3 className="text-2xl font-bold mb-4">About This Event</h3>
                 <p className="text-muted-foreground leading-relaxed">
                   {event.description ||
                     "Join us for an amazing event experience."}
                 </p>
+              </div>
+
+              <div className="bg-white p-8 rounded-2xl shadow-lg">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-2xl font-bold">Reviews</h3>
+                  <Link
+                    to={`${RoutePath.ATTENDEE_REVIEWS}?eventId=${id}`}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    Write a review
+                  </Link>
+                </div>
+
+                {reviewsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
+                  </div>
+                ) : eventReviews.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-6">
+                    No reviews yet for this event.
+                  </p>
+                ) : (
+                  <div className="space-y-6">
+                    {eventReviews.map((review) => (
+                      <div
+                        key={review.id}
+                        className="border-b border-border pb-4 last:border-0"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold">
+                            {getReviewerName(review)}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {formatReviewDate(review.createdAt)}
+                          </span>
+                        </div>
+                        <div className="mb-2">
+                          <ReviewStars rating={review.rating} size={16} />
+                        </div>
+                        <p className="text-muted-foreground">{review.comment}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>

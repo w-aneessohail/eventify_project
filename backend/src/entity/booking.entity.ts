@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
-import { PaymentStatus } from "../enum/paymentStatus.enum";
+import { BookingStatus } from "../enum/bookingStatus.enum";
 import { Payment } from "./payment.entity";
 import { User } from "./user.entity";
 import { Event } from "./event.entity";
@@ -29,10 +29,10 @@ export class Booking {
 
   @Column({
     type: "enum",
-    enum: PaymentStatus,
-    default: PaymentStatus.PENDING,
+    enum: BookingStatus,
+    default: BookingStatus.PENDING,
   })
-  status: PaymentStatus;
+  status: BookingStatus;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -41,7 +41,7 @@ export class Booking {
   updatedAt: Date;
 
   @OneToOne(() => Payment, (payment) => payment.booking)
-  payments: Payment[];
+  payment?: Payment;
 
   @ManyToOne(() => User, (user) => user.bookings, { onDelete: "CASCADE" })
   @JoinColumn()

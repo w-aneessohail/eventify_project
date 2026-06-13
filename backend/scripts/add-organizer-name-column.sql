@@ -1,4 +1,5 @@
--- Manual fix if backend fails on organizerName (same steps as startup prep)
+-- DEPRECATED: handled by migration 1740000000000-SchemaCorrectionsBaseline.ts
+-- Manual fix if migrations cannot run:
 -- psql -U postgres -d eventify_db -f scripts/add-organizer-name-column.sql
 
 ALTER TABLE organizers ADD COLUMN IF NOT EXISTS "organizerName" character varying;

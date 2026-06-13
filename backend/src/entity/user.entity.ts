@@ -51,7 +51,7 @@ export class User {
   updatedAt: Date;
 
   @OneToOne(() => Organizer, (organizer) => organizer.user)
-  organizers: Organizer;
+  organizer?: Organizer;
 
   @OneToMany(() => Booking, (booking) => booking.attendee)
   bookings: Booking[];
@@ -62,8 +62,8 @@ export class User {
   @OneToMany(() => OtpToken, (otp) => otp.user)
   otpTokens: OtpToken[];
 
-  @OneToOne(() => AuthToken, (token) => token.user)
-  authTokens: AuthToken;
+  @OneToMany(() => AuthToken, (token) => token.user)
+  authTokens: AuthToken[];
 
   @BeforeInsert()
   @BeforeUpdate()

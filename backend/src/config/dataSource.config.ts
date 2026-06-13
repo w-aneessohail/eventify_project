@@ -4,7 +4,7 @@ dotenv.config();
 
 const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
 
-const baseDataSourceOptions = {
+export const baseDataSourceOptions = {
   type: "postgres" as const,
   host: DB_HOST || "localhost",
   port: Number(DB_PORT) || 5432,
@@ -18,14 +18,12 @@ const baseDataSourceOptions = {
 
 export const AppDataSource = new DataSource({
   ...baseDataSourceOptions,
-  synchronize: true,
+  synchronize: false,
+  migrationsRun: true,
 });
 
-/**
- * Existing DBs may have organizer rows without organizerName.
- * TypeORM cannot ADD COLUMN ... NOT NULL in one step — backfill first.
- */
-async function ensureOrganizerNameColumn(): Promise<void> {
+/** One-time schema creation for empty databases (replaces permanent synchronize). */
+async function bootstrapSchemaIfEmpty(): Promise<void> {
   const prep = new DataSource({
     ...baseDataSourceOptions,
     synchronize: false,
@@ -33,34 +31,37 @@ async function ensureOrganizerNameColumn(): Promise<void> {
 
   await prep.initialize();
   try {
-    await prep.query(
-      `ALTER TABLE organizers ADD COLUMN IF NOT EXISTS "organizerName" character varying`
+    const result = await prep.query(
+      `SELECT EXISTS (
+         SELECT FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'users'
+       ) AS "exists"`
     );
-    await prep.query(
-      `UPDATE organizers
-       SET "organizerName" = COALESCE(
-         NULLIF(TRIM("organizerName"), ''),
-         "organizationName",
-         'Organizer'
-       )
-       WHERE "organizerName" IS NULL`
-    );
-    await prep.query(
-      `ALTER TABLE organizers ALTER COLUMN "organizerName" SET NOT NULL`
-    );
-  } catch (err) {
-    const msg = (err as Error).message ?? "";
-    if (!msg.includes("already") && !msg.includes("does not exist")) {
-      console.warn("organizerName column prep:", msg);
+
+    if (!result[0]?.exists) {
+      console.log(
+        "Empty database detected — running one-time schema bootstrap..."
+      );
+      await prep.destroy();
+
+      const bootstrap = new DataSource({
+        ...baseDataSourceOptions,
+        synchronize: true,
+      });
+      await bootstrap.initialize();
+      await bootstrap.destroy();
+      return;
     }
   } finally {
-    await prep.destroy();
+    if (prep.isInitialized) {
+      await prep.destroy();
+    }
   }
 }
 
 export const initdatabase = async () => {
   try {
-    await ensureOrganizerNameColumn();
+    await bootstrapSchemaIfEmpty();
     await AppDataSource.initialize();
     console.log("Database connected!");
   } catch (error) {

@@ -19,6 +19,7 @@ import { BookingService } from "../service/booking.service";
 import { Booking } from "../entity/booking.entity";
 import { Payment } from "../entity/payment.entity";
 import { PaymentService } from "../service/payment.service";
+import { ApprovalService } from "../service/approval.service";
 
 export const userRepository = new UserService(
   AppDataSource.getRepository(User)
@@ -58,4 +59,9 @@ export const bookingRepository = new BookingService(
 
 export const paymentRepository = new PaymentService(
   AppDataSource.getRepository(Payment)
+);
+
+export const approvalRepository = new ApprovalService(
+  AppDataSource.getRepository(Organizer),
+  AppDataSource.getRepository(Event)
 );

@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
-import { eventReviewRepository } from "../repository";
+import { eventReviewRepository, eventRepository, userRepository } from "../repository";
+import { ApprovalService } from "../service/approval.service";
 
 export class EventReviewController {
   static async getAllReviews(req: Request, res: Response) {
@@ -30,7 +31,31 @@ export class EventReviewController {
 
   static async createReview(req: Request, res: Response) {
     try {
-      const newReview = await eventReviewRepository.createReview(req.body);
+      const { eventId, userId, rating, comment } = req.body;
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+      if (!tokenUser?.id || tokenUser.id !== Number(userId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const event = await eventRepository.findById(Number(eventId));
+      const attendee = await userRepository.findById(Number(userId));
+
+      if (!event || !attendee) {
+        return res.status(404).json({ message: "Event or user not found" });
+      }
+
+      const bookable = ApprovalService.assertEventBookable(event);
+      if (bookable.ok === false) {
+        return res.status(400).json({ message: bookable.message });
+      }
+
+      const newReview = await eventReviewRepository.createReview({
+        event,
+        attendee,
+        rating,
+        comment,
+      });
       res.status(201).json(newReview);
     } catch (error) {
       console.error("Error creating review:", error);

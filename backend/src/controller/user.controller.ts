@@ -67,20 +67,44 @@ export class UserController {
   static async updateUser(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const { organizerDetails } = req.body;
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
 
-      const updatedUser = await userRepository.updateUser(id, req.body);
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
 
-      if (!updatedUser) {
+      const actor = await userRepository.findById(tokenUser.id);
+      if (!actor) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { name, email, organizerDetails } = req.body;
+      const updatePayload: Record<string, unknown> = {};
+      if (name !== undefined) updatePayload.name = name;
+      if (email !== undefined) updatePayload.email = email;
+
+      const result = await userRepository.updateUserForActor(
+        id,
+        actor.id,
+        actor.role,
+        updatePayload
+      );
+
+      if (result.error === "forbidden") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      if (result.error === "not_found") {
         return res.status(404).json({ message: "User not found" });
       }
+
+      const updatedUser = result.user;
 
       if (organizerDetails && updatedUser.role === UserRole.ORGANIZER) {
         await organizerRepository.updateOrganizerByUserId(id, organizerDetails);
       }
 
       const userWithOrganizer = await userRepository.findById(id);
-      res.status(200).json(toSafeUser(userWithOrganizer));
+      res.status(200).json({ user: toSafeUser(userWithOrganizer) });
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Error updating user" });

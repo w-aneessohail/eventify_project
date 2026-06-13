@@ -150,7 +150,7 @@ export default function PostEvent() {
       setSubmitting(true);
       setLoadingSubmit(true);
 
-      const organizerId = user?.organizers?.id;
+      const organizerId = user?.organizer?.id;
       if (!organizerId) {
         throw new Error(
           "Organizer profile not found. Please log in again as an organizer."

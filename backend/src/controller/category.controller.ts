@@ -1,14 +1,20 @@
 import type { Request, Response } from "express";
 import { categoryRepository } from "../repository";
+import { resolveActor } from "../helper/actor.helper";
+import { ApprovalService } from "../service/approval.service";
 
 export class CategoryController {
   static async getAllCategories(req: Request, res: Response) {
     try {
       const { skip = 0, limit = 10, ...whereParams } = req.query;
+      const actor = await resolveActor(req);
+      const publicOnly = ApprovalService.isPublicActor(actor?.role);
+
       const categories = await categoryRepository.findAll(
         whereParams,
         Number(skip),
-        Number(limit)
+        Number(limit),
+        publicOnly
       );
       res.status(200).json(categories);
     } catch (error) {
@@ -20,7 +26,10 @@ export class CategoryController {
   static async getCategoryById(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const category = await categoryRepository.findById(id);
+      const actor = await resolveActor(req);
+      const publicOnly = ApprovalService.isPublicActor(actor?.role);
+
+      const category = await categoryRepository.findById(id, publicOnly);
       if (!category)
         return res.status(404).json({ message: "Category not found" });
       res.status(200).json(category);

@@ -83,7 +83,7 @@ const Contact = () => {
                     <Mail className="w-6 h-6" />
                     <div>
                       <p className="text-sm text-white/80">Email:</p>
-                      <p className="font-semibold">Ticketer@gmail.com</p>
+                      <p className="font-semibold">hello@eventify.pk</p>
                     </div>
                   </div>
                 </div>

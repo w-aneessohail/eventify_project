@@ -1,28 +1,46 @@
 import type { Repository } from "typeorm";
 import type { Category } from "../entity/category.entity";
+import { VerificationStatus } from "../enum/verificationStatus.enum";
 
 export class CategoryService {
   constructor(private categoryRepository: Repository<Category>) {}
 
+  private filterPublicEvents(category: Category): Category {
+    if (!category.events?.length) return category;
+    category.events = category.events.filter(
+      (event) =>
+        event.status === VerificationStatus.APPROVED &&
+        event.organizer?.verificationStatus === VerificationStatus.APPROVED
+    );
+    return category;
+  }
+
   async findAll(
-    whereParams: any = {},
+    whereParams: Record<string, unknown> = {},
     skip = 0,
-    limit = 10
+    limit = 10,
+    publicOnly = false
   ): Promise<Category[]> {
-    return this.categoryRepository.find({
+    const categories = await this.categoryRepository.find({
       where: { ...whereParams },
-      relations: ["events"],
+      relations: ["events", "events.organizer"],
       order: { createdAt: "DESC" },
       skip,
       take: limit,
     });
+
+    return publicOnly
+      ? categories.map((c) => this.filterPublicEvents(c))
+      : categories;
   }
 
-  async findById(id: number): Promise<Category | null> {
-    return this.categoryRepository.findOne({
+  async findById(id: number, publicOnly = false): Promise<Category | null> {
+    const category = await this.categoryRepository.findOne({
       where: { id },
-      relations: ["events"],
+      relations: ["events", "events.organizer"],
     });
+    if (!category) return null;
+    return publicOnly ? this.filterPublicEvents(category) : category;
   }
 
   async createCategory(categoryData: Partial<Category>): Promise<Category> {

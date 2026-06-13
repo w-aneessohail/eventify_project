@@ -1,7 +1,7 @@
 // src/components/Sidebar.jsx
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Home, CalendarPlus, Calendar, Star, LogOut, X } from "lucide-react";
+import { Home, CalendarPlus, Calendar, Star, LogOut, X, Users, Ticket, CreditCard, UserCircle } from "lucide-react";
 import { RoutePath } from "@/enum/routePath";
 
 const ORGANIZER_NAV = [
@@ -17,8 +17,11 @@ const ORGANIZER_NAV = [
 
 const ADMIN_NAV = [
   { to: RoutePath.ADMIN_DASHBOARD, label: "Dashboard", icon: Home },
-  { to: RoutePath.ADMIN_BOOKINGS, label: "Bookings", icon: Calendar },
-  { to: RoutePath.ADMIN_REVIEWS, label: "Reviews", icon: Star },
+  { to: RoutePath.ADMIN_ORGANIZERS, label: "Organizers", icon: Users },
+  { to: RoutePath.ADMIN_EVENTS, label: "Events", icon: Calendar },
+  { to: RoutePath.ADMIN_BOOKINGS, label: "Bookings", icon: Ticket },
+  { to: RoutePath.ADMIN_USERS, label: "Users", icon: UserCircle },
+  { to: RoutePath.ADMIN_PAYMENTS, label: "Payments", icon: CreditCard },
 ];
 
 export default function Sidebar({ isOpen, onClose, panel = "organizer" }) {

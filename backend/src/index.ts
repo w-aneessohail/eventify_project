@@ -13,6 +13,7 @@ import { eventReviewRouter } from "./route/eventReview.route";
 import { bookingRouter } from "./route/booking.route";
 import { paymentRouter } from "./route/payment.route";
 import { uploadRouter } from "./route/upload.route";
+import { approvalRouter } from "./route/approval.route";
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use("/api", categoryRouter);
 app.use("/api", eventReviewRouter);
 app.use("/api", bookingRouter);
 app.use("/api", paymentRouter);
+app.use("/api", approvalRouter);
 
 initdatabase()
   .then(() => {

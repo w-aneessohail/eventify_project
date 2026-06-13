@@ -24,7 +24,14 @@ Router.post(
   authentication,
   authorization([UserRole.ATTENDEE]),
   CreatePaymentValidator,
-  PaymentController.createPayment
+  PaymentController.confirmPayment
+);
+Router.post(
+  "/payments/confirm",
+  authentication,
+  authorization([UserRole.ATTENDEE]),
+  CreatePaymentValidator,
+  PaymentController.confirmPayment
 );
 Router.put(
   "/payments/:id",
