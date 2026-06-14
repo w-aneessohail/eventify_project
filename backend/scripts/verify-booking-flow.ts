@@ -2,9 +2,6 @@
  * Quick smoke test for booking lifecycle (run after seed).
  * Usage: npx ts-node scripts/verify-booking-flow.ts
  */
-import * as dotenv from "dotenv";
-dotenv.config();
-
 import dataSource from "../src/data-source";
 import { Booking } from "../src/entity/booking.entity";
 import { Event } from "../src/entity/event.entity";

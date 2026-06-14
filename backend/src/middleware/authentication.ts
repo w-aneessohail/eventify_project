@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import Encrypt from "../helper/encrypt.helper";
+import { logger } from "../config/logger";
 
 export const authentication = async (
   req: Request,
@@ -19,11 +20,11 @@ export const authentication = async (
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    req.headers["user"] = decode;
+    (req.headers as Record<string, unknown>)["user"] = decode;
 
     next();
   } catch (error) {
-    console.error("Authentication Error:", error);
+    logger.warn({ err: error }, "Authentication error");
     return res.status(401).json({ message: "Unauthorized" });
   }
 };

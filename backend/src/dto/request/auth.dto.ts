@@ -28,6 +28,11 @@ export class VerifyOtpDto {
   otp: string;
 }
 
+export class ForgotPasswordDto {
+  @IsEmail({}, { message: "Invalid email format" })
+  email: string;
+}
+
 export class ResetPasswordDto {
   @IsEmail({}, { message: "Invalid email format" })
   email: string;

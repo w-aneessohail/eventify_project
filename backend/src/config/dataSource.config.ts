@@ -1,23 +1,24 @@
 import { DataSource } from "typeorm";
-import * as dotenv from "dotenv";
-dotenv.config();
+import { getConfig } from "./env";
+import { logger } from "./logger";
 
-const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
-
-export const baseDataSourceOptions = {
-  type: "postgres" as const,
-  host: DB_HOST || "localhost",
-  port: Number(DB_PORT) || 5432,
-  username: DB_USER || "localhost",
-  password: DB_PASSWORD || "Assa@774623",
-  database: DB_NAME || "eventify_db",
-  logging: false,
-  entities: ["src/entity/**/*.ts"],
-  migrations: ["src/migration/**/*.ts"],
-};
+export function getDataSourceOptions() {
+  const { db } = getConfig();
+  return {
+    type: "postgres" as const,
+    host: db.host,
+    port: db.port,
+    username: db.user,
+    password: db.password,
+    database: db.name,
+    logging: false,
+    entities: ["src/entity/**/*.ts"],
+    migrations: ["src/migration/**/*.ts"],
+  };
+}
 
 export const AppDataSource = new DataSource({
-  ...baseDataSourceOptions,
+  ...getDataSourceOptions(),
   synchronize: false,
   migrationsRun: true,
 });
@@ -25,7 +26,7 @@ export const AppDataSource = new DataSource({
 /** One-time schema creation for empty databases (replaces permanent synchronize). */
 async function bootstrapSchemaIfEmpty(): Promise<void> {
   const prep = new DataSource({
-    ...baseDataSourceOptions,
+    ...getDataSourceOptions(),
     synchronize: false,
   });
 
@@ -39,13 +40,11 @@ async function bootstrapSchemaIfEmpty(): Promise<void> {
     );
 
     if (!result[0]?.exists) {
-      console.log(
-        "Empty database detected — running one-time schema bootstrap..."
-      );
+      logger.info("Empty database detected — running one-time schema bootstrap");
       await prep.destroy();
 
       const bootstrap = new DataSource({
-        ...baseDataSourceOptions,
+        ...getDataSourceOptions(),
         synchronize: true,
       });
       await bootstrap.initialize();
@@ -63,9 +62,9 @@ export const initdatabase = async () => {
   try {
     await bootstrapSchemaIfEmpty();
     await AppDataSource.initialize();
-    console.log("Database connected!");
+    logger.info("Database connected");
   } catch (error) {
-    console.error("Error initializing database:", error);
+    logger.error({ err: error }, "Error initializing database");
     process.exit(1);
   }
 };

@@ -1,12 +1,4 @@
-import * as nodemailer from "nodemailer";
-
-const {
-  MAIL_HOST = "sandbox.smtp.mailtrap.io",
-  MAIL_PORT = "2525",
-  MAIL_USER,
-  MAIL_PASS,
-  MAIL_FROM = "Clinic <no-reply@clinic.test>",
-} = process.env;
+import { MailService } from "../service/mail.service";
 
 export type SendMailOptions = {
   to: string;
@@ -14,28 +6,13 @@ export type SendMailOptions = {
   html?: string;
 };
 
+/** @deprecated Use MailService directly. Kept for auth OTP flows. */
 export default class Mailer {
-  private static transporter: nodemailer.Transporter | null = null;
-
-  private static getTransporter() {
-    if (!Mailer.transporter) {
-      Mailer.transporter = nodemailer.createTransport({
-        host: MAIL_HOST,
-        port: Number(MAIL_PORT),
-        auth: { user: MAIL_USER, pass: MAIL_PASS },
-      });
-    }
-    return Mailer.transporter;
-  }
-
-  static async send({ to, subject, html }: SendMailOptions) {
-    const tx = Mailer.getTransporter();
-    const payload = {
-      from: MAIL_FROM,
+  static async send({ to, subject, html }: SendMailOptions): Promise<void> {
+    await MailService.send({
       to,
       subject,
-      html,
-    };
-    return tx.sendMail(payload);
+      html: html ?? "",
+    });
   }
 }

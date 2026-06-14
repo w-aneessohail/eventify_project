@@ -6,11 +6,13 @@ import { BookingStatus } from "../enum/bookingStatus.enum";
 import { PaymentMethod } from "../enum/paymentMethod.enum";
 import { PaymentStatus } from "../enum/paymentStatus.enum";
 import { ApprovalService } from "./approval.service";
+import { notifyBookingConfirmed } from "../email/notifications";
 
 export type ConfirmPaymentResult = {
   ok: boolean;
   payment?: Payment;
   booking?: Booking;
+  newlyConfirmed?: boolean;
   code?: "not_found" | "forbidden" | "conflict" | "invalid_state";
   message?: string;
 };
@@ -56,9 +58,15 @@ export class PaymentService {
     method: PaymentMethod;
     externalTransactionId?: string;
   }): Promise<ConfirmPaymentResult> {
-    return this.paymentRepository.manager.transaction(async (manager) => {
-      return this.runConfirmPayment(manager, input);
-    });
+    const result = await this.paymentRepository.manager.transaction(
+      async (manager) => this.runConfirmPayment(manager, input)
+    );
+
+    if (result.ok && result.newlyConfirmed && result.booking && result.payment) {
+      await notifyBookingConfirmed(result.booking, result.payment);
+    }
+
+    return result;
   }
 
   private async runConfirmPayment(
@@ -207,6 +215,7 @@ export class PaymentService {
         ok: true,
         payment: savedPayment!,
         booking: savedBooking!,
+        newlyConfirmed: true,
       };
   }
 

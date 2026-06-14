@@ -12,7 +12,7 @@ export const optionalAuthentication = async (
     if (token) {
       const decode = Encrypt.verifyToken(token);
       if (decode) {
-        req.headers["user"] = decode;
+        (req.headers as Record<string, unknown>)["user"] = decode;
       }
     }
   } catch {

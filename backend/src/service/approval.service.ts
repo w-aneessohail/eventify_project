@@ -3,6 +3,12 @@ import type { Event } from "../entity/event.entity";
 import type { Organizer } from "../entity/organizer.entity";
 import { VerificationStatus } from "../enum/verificationStatus.enum";
 import { UserRole } from "../enum/userRole.enum";
+import {
+  notifyEventApproved,
+  notifyEventRejected,
+  notifyOrganizerApproved,
+  notifyOrganizerRejected,
+} from "../email/notifications";
 
 export type OrganizerGateResult =
   | { ok: true; organizer: Organizer }
@@ -87,7 +93,15 @@ export class ApprovalService {
     organizer.verificationStatus = VerificationStatus.APPROVED;
     organizer.verifiedBy = adminId;
     organizer.verifiedAt = new Date();
-    return this.organizerRepository.save(organizer);
+    const saved = await this.organizerRepository.save(organizer);
+
+    const withUser = await this.organizerRepository.findOne({
+      where: { id: saved.id },
+      relations: ["user"],
+    });
+    if (withUser) await notifyOrganizerApproved(withUser);
+
+    return saved;
   }
 
   async rejectOrganizer(
@@ -102,7 +116,15 @@ export class ApprovalService {
     organizer.verificationStatus = VerificationStatus.REJECTED;
     organizer.verifiedBy = adminId;
     organizer.verifiedAt = new Date();
-    return this.organizerRepository.save(organizer);
+    const saved = await this.organizerRepository.save(organizer);
+
+    const withUser = await this.organizerRepository.findOne({
+      where: { id: saved.id },
+      relations: ["user"],
+    });
+    if (withUser) await notifyOrganizerRejected(withUser);
+
+    return saved;
   }
 
   async approveEvent(
@@ -122,16 +144,30 @@ export class ApprovalService {
     event.status = VerificationStatus.APPROVED;
     event.verifiedBy = adminId;
     event.verifiedAt = new Date();
-    return this.eventRepository.save(event);
+    const saved = await this.eventRepository.save(event);
+
+    const withRelations = await this.eventRepository.findOne({
+      where: { id: saved.id },
+      relations: ["organizer", "organizer.user"],
+    });
+    if (withRelations) await notifyEventApproved(withRelations);
+
+    return saved;
   }
 
   async rejectEvent(eventId: number, adminId: number): Promise<Event | null> {
-    const event = await this.eventRepository.findOne({ where: { id: eventId } });
+    const event = await this.eventRepository.findOne({
+      where: { id: eventId },
+      relations: ["organizer", "organizer.user"],
+    });
     if (!event) return null;
 
     event.status = VerificationStatus.REJECTED;
     event.verifiedBy = adminId;
     event.verifiedAt = new Date();
-    return this.eventRepository.save(event);
+    const saved = await this.eventRepository.save(event);
+
+    await notifyEventRejected(saved);
+    return saved;
   }
 }

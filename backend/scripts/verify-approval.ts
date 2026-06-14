@@ -2,9 +2,6 @@
  * Smoke test for approval domain enforcement (run after seed).
  * Usage: npx ts-node scripts/verify-approval.ts
  */
-import * as dotenv from "dotenv";
-dotenv.config();
-
 import dataSource from "../src/data-source";
 import { Event } from "../src/entity/event.entity";
 import { Organizer } from "../src/entity/organizer.entity";

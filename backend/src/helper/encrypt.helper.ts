@@ -1,8 +1,7 @@
 import * as jwt from "jsonwebtoken";
 import * as bcrypt from "bcrypt";
-import * as dotenv from "dotenv";
-dotenv.config();
-const { JWT_SECRET = "" } = process.env;
+import { getConfig } from "../config/env";
+import { logger } from "../config/logger";
 
 export default class Encrypt {
   static async comparePassword(
@@ -12,20 +11,19 @@ export default class Encrypt {
     return bcrypt.compareSync(password, hashedPassword);
   }
 
-  static async generateToken(payload: any): Promise<string> {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+  static async generateToken(payload: { id: number }): Promise<string> {
+    return jwt.sign(payload, getConfig().jwtSecret, { expiresIn: "1h" });
   }
 
-  static async generateRefreshToken(payload: any): Promise<string> {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+  static async generateRefreshToken(payload: { id: number }): Promise<string> {
+    return jwt.sign(payload, getConfig().jwtSecret, { expiresIn: "7d" });
   }
 
-  static verifyToken(token: string): any {
-    console.log(token);
+  static verifyToken(token: string): { id: number } | null {
     try {
-      return jwt.verify(token, JWT_SECRET);
+      return jwt.verify(token, getConfig().jwtSecret) as { id: number };
     } catch (error) {
-      console.error("Token verification failed:", error);
+      logger.warn({ err: error }, "Token verification failed");
       return null;
     }
   }

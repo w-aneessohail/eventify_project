@@ -1,12 +1,16 @@
 import "reflect-metadata";
+import "./config/bootstrap";
 import * as express from "express";
-import * as dotenv from "dotenv";
 import * as cors from "cors";
 import * as cookieParser from "cookie-parser";
 import * as path from "path";
+import helmet from "helmet";
+import { getConfig } from "./config/env";
+import { logger } from "./config/logger";
+import { initdatabase } from "./config/dataSource.config";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { userRouter } from "./route/user.route";
 import { authRouter } from "./route/auth.route";
-import { initdatabase } from "./config/dataSource.config";
 import { eventRouter } from "./route/event.route";
 import { categoryRouter } from "./route/category.route";
 import { eventReviewRouter } from "./route/eventReview.route";
@@ -15,26 +19,39 @@ import { paymentRouter } from "./route/payment.route";
 import { uploadRouter } from "./route/upload.route";
 import { approvalRouter } from "./route/approval.route";
 
-dotenv.config();
-
+const config = getConfig();
 const app = express();
-const PORT = process.env.PORT || "3000";
+
+if (config.trustProxy) {
+  app.set("trust proxy", 1);
+}
+
+app.use(
+  helmet({
+    // CSP omitted — static uploads and Vite dev origins vary; add when frontend is finalized.
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
 app.use(cookieParser());
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: config.corsOrigins,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-app.use(cookieParser());
 app.use("/image", express.static(path.join(process.cwd(), "image")));
 
+// Upload routes before JSON parser so multipart bodies are handled by multer.
 app.use("/api", uploadRouter);
-app.use(express.json());
+
+app.use(express.json({ limit: config.bodyLimitJson }));
+app.use(express.urlencoded({ extended: true, limit: config.bodyLimitUrlencoded }));
 
 app.use("/api", userRouter);
 app.use("/api", authRouter);
@@ -45,12 +62,19 @@ app.use("/api", bookingRouter);
 app.use("/api", paymentRouter);
 app.use("/api", approvalRouter);
 
+app.use(notFoundHandler);
+app.use(errorHandler);
+
 initdatabase()
   .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
+    app.listen(config.port, () => {
+      logger.info(
+        { port: config.port, env: config.nodeEnv },
+        "Eventify server started"
+      );
     });
   })
   .catch((error) => {
-    console.error("Failed to initialize database:", error);
+    logger.error({ err: error }, "Failed to initialize database");
+    process.exit(1);
   });

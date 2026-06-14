@@ -10,6 +10,12 @@ import Mailer from "../helper/mailer.helper";
 import { OtpPurpose } from "../enum/otpPurpose.enum";
 import { UserRole } from "../enum/userRole.enum";
 import { toSafeUser } from "../dto/response/user.response.dto";
+import {
+  getAccessTokenCookieOptions,
+  getClearCookieOptions,
+  getRefreshTokenCookieOptions,
+} from "../helper/cookie.helper";
+import { logger } from "../config/logger";
 
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
@@ -47,7 +53,7 @@ export class AuthController {
               html: `<p>Use this OTP to verify your account:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
             });
           } catch (err) {
-            console.log("Failed to send OTP:", (err as Error).message);
+            logger.warn({ err }, "Failed to send OTP email");
           }
 
           return res.status(200).json({
@@ -89,7 +95,7 @@ export class AuthController {
           html: `<p>Use this OTP to verify your account:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
         });
       } catch (err) {
-        console.log("Failed to send OTP:", (err as Error).message);
+        logger.warn({ err }, "Failed to send OTP email");
       }
 
       const userWithOrganizer = await userRepository.findById(user.id);
@@ -99,7 +105,7 @@ export class AuthController {
         message: "User created successfully. OTP sent to email.",
       });
     } catch (error) {
-      console.error("Error registering user:", error);
+      logger.error({ err: error }, "Error registering user");
       return res.status(500).json({ message: "Error registering user" });
     }
   }
@@ -128,18 +134,8 @@ export class AuthController {
       expiresAt,
     });
 
-    res.cookie("access_token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-    res.cookie("refresh_token", refreshToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("access_token", token, getAccessTokenCookieOptions());
+    res.cookie("refresh_token", refreshToken, getRefreshTokenCookieOptions());
 
     const userWithOrganizer = await userRepository.findByEmail(email);
 
@@ -191,25 +187,14 @@ export class AuthController {
         expiresAt,
       });
 
-      // ✅ Refresh cookies
-      res.cookie("access_token", newAccessToken, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: false,
-        maxAge: 24 * 60 * 60 * 1000,
-      });
-      res.cookie("refresh_token", newRefreshToken, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: false,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie("access_token", newAccessToken, getAccessTokenCookieOptions());
+      res.cookie("refresh_token", newRefreshToken, getRefreshTokenCookieOptions());
 
       return res.status(200).json({
         message: "Tokens refreshed successfully",
       });
     } catch (error) {
-      console.error("Error refreshing token:", error);
+      logger.error({ err: error }, "Error refreshing token");
       return res
         .status(500)
         .json({ message: "Server error during token refresh" });
@@ -264,7 +249,7 @@ export class AuthController {
         html: `<p>Use this OTP to reset your password:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
       });
     } catch (err) {
-      console.log("Failed to send reset OTP:", (err as Error).message);
+      logger.warn({ err }, "Failed to send reset OTP email");
     }
 
     return res.status(200).json({ message: "Reset OTP sent to email" });
@@ -295,8 +280,8 @@ export class AuthController {
   }
 
   static async logoutUser(req: Request, res: Response) {
-    res.clearCookie(ACCESS_TOKEN_KEY);
-    res.clearCookie(REFRESH_TOKEN_KEY);
+    res.clearCookie(ACCESS_TOKEN_KEY, getClearCookieOptions());
+    res.clearCookie(REFRESH_TOKEN_KEY, getClearCookieOptions());
     res.status(200).json({ message: "Logged out successfully" });
   }
 }
