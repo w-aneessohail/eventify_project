@@ -11,6 +11,7 @@ import { EventService } from "../src/service/event.service";
 import { BookingService } from "../src/service/booking.service";
 import { Booking } from "../src/entity/booking.entity";
 import { VerificationStatus } from "../src/enum/verificationStatus.enum";
+import { repairSeedState } from "./repair-seed-state-lib";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -18,6 +19,9 @@ function assert(condition: boolean, message: string) {
 
 async function main() {
   await dataSource.initialize();
+
+  await repairSeedState(dataSource);
+  console.log("✓ Seed verification state repaired");
 
   const organizerRepo = dataSource.getRepository(Organizer);
   const eventRepo = dataSource.getRepository(Event);

@@ -10,6 +10,8 @@ import {
 
 } from "../repository";
 
+import { UserRole } from "../enum/userRole.enum";
+
 
 
 export class BookingController {
@@ -64,6 +66,22 @@ export class BookingController {
 
     try {
 
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+      if (!tokenUser?.id) {
+
+        return res.status(401).json({ message: "Unauthorized" });
+
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+
+      if (!actor) {
+
+        return res.status(401).json({ message: "Unauthorized" });
+
+      }
+
       const { status, eventId, attendeeId, skip = 0, limit = 10 } = req.query;
 
 
@@ -77,6 +95,24 @@ export class BookingController {
       if (eventId) whereParams.event = { id: Number(eventId) };
 
       if (attendeeId) whereParams.attendee = { id: Number(attendeeId) };
+
+      if (actor.role === UserRole.ORGANIZER) {
+
+        if (!actor.organizer?.id) {
+
+          return res.status(200).json([]);
+
+        }
+
+        whereParams.event = {
+
+          ...(whereParams.event || {}),
+
+          organizer: { id: actor.organizer.id },
+
+        };
+
+      }
 
 
 
@@ -256,13 +292,65 @@ export class BookingController {
 
       const id = Number(req.params.id);
 
-      const updatedBooking = await bookingRepository.updateBooking(
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+      if (!tokenUser?.id) {
+
+        return res.status(401).json({ message: "Unauthorized" });
+
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+
+      if (!actor) {
+
+        return res.status(401).json({ message: "Unauthorized" });
+
+      }
+
+      const access = await bookingRepository.findByIdForActor(
 
         id,
 
-        req.body
+        actor.id,
+
+        actor.role
 
       );
+
+      if (access.error === "not_found") {
+
+        return res.status(404).json({ message: "Booking not found" });
+
+      }
+
+      if (access.error === "forbidden") {
+
+        return res.status(403).json({ message: "Forbidden" });
+
+      }
+
+      const booking = access.booking;
+      const { status } = req.body as { status?: string };
+
+      if (status === undefined) {
+        return res.status(400).json({ message: "No valid fields to update" });
+      }
+
+      if (String(status).toLowerCase() !== "cancelled") {
+        return res.status(400).json({
+          message:
+            "Bookings can only be cancelled. Confirmation requires payment.",
+        });
+      }
+
+      if (String(booking.status).toLowerCase() !== "pending") {
+        return res.status(400).json({
+          message: "Only pending bookings can be cancelled",
+        });
+      }
+
+      const updatedBooking = await bookingRepository.cancelPendingBooking(id);
 
 
 

@@ -16,6 +16,7 @@ import { categoryRouter } from "./route/category.route";
 import { eventReviewRouter } from "./route/eventReview.route";
 import { bookingRouter } from "./route/booking.route";
 import { paymentRouter } from "./route/payment.route";
+import { PaymentController } from "./controller/payment.controller";
 import { uploadRouter } from "./route/upload.route";
 import { approvalRouter } from "./route/approval.route";
 
@@ -49,6 +50,13 @@ app.use("/image", express.static(path.join(process.cwd(), "image")));
 
 // Upload routes before JSON parser so multipart bodies are handled by multer.
 app.use("/api", uploadRouter);
+
+// Safepay webhook must read the raw body for HMAC signature verification.
+app.post(
+  "/api/payments/webhook",
+  express.raw({ type: "application/json" }),
+  PaymentController.handleWebhook
+);
 
 app.use(express.json({ limit: config.bodyLimitJson }));
 app.use(express.urlencoded({ extended: true, limit: config.bodyLimitUrlencoded }));

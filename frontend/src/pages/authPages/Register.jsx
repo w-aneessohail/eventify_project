@@ -383,9 +383,12 @@ const Register = () => {
               <div className="mt-6">
                 <button
                   type="submit"
-                  className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-accent transition-all hover-lift"
+                  disabled={loading || formik.isSubmitting}
+                  className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-accent transition-all hover-lift disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Create an account
+                  {loading || formik.isSubmitting
+                    ? "Creating Account..."
+                    : "Create an account"}
                 </button>
               </div>
 

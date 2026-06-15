@@ -191,6 +191,24 @@ export class EventController {
   static async deleteEvent(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const existing = await eventRepository.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+      if (
+        !actor ||
+        (actor.role !== UserRole.ADMIN &&
+          existing.organizer?.user?.id !== actor.id)
+      ) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
 
       await eventImageRepository.deleteImagesByEvent(id);
 

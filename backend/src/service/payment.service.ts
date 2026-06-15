@@ -46,8 +46,8 @@ export class PaymentService {
   }
 
   /**
-   * Single entry point for payment success — used by simulated checkout today
-   * and future gateway webhooks (JazzCash, EasyPaisa, Stripe).
+   * Single entry point for payment success — used by Safepay webhooks
+   * and verification scripts.
    *
    * One transaction: lock event → verify stock → confirm payment → confirm booking → decrement tickets.
    * Idempotent when booking is already confirmed with a successful payment.
@@ -165,9 +165,23 @@ export class PaymentService {
         `SIM_${Date.now()}_${booking.id}_${Math.random().toString(36).slice(2, 9)}`;
 
       if (payment?.status === PaymentStatus.SUCCESS) {
+        // Repair inconsistent state: payment succeeded but booking still pending
         booking.status = BookingStatus.CONFIRMED;
+        event.availableTickets -= booking.quantity;
         await bookingRepo.save(booking);
-        return { ok: true, payment, booking };
+        await eventRepo.save(event);
+
+        const savedBooking = await bookingRepo.findOne({
+          where: { id: booking.id },
+          relations: ["event", "attendee", "payment"],
+        });
+
+        return {
+          ok: true,
+          payment,
+          booking: savedBooking!,
+          newlyConfirmed: true,
+        };
       }
 
       if (payment) {

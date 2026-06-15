@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
 import useAxios from "@/hooks/useAxios";
 import { useNavigate } from "react-router-dom";
 import { RoutePath } from "@/enum/routePath";
@@ -11,72 +18,80 @@ export const AuthProvider = ({ children }) => {
   const [initialized, setInitialized] = useState(false);
   const [initInProgress, setInitInProgress] = useState(false);
   const navigate = useNavigate();
-  let isLogoutInProgress = false;
+  const userRef = useRef(null);
+  const logoutInProgressRef = useRef(false);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const isAuthenticated = !!user;
 
-  const logoutHandler = async () => {
-    if (isLogoutInProgress) return;
-    isLogoutInProgress = true;
+  const handleSessionExpired = useCallback(() => {
+    const wasLoggedIn = !!userRef.current;
+    setUser(null);
+    setInitialized(true);
 
-    try {
-      console.log("[v0] Logging out");
-      await axiosInstance.fetchData({
-        url: "/logout",
-        method: "post",
+    if (wasLoggedIn) {
+      navigate(RoutePath.LOGIN, {
+        replace: true,
+        state: { sessionExpired: true },
       });
-    } catch (error) {
-      console.log("[v0] Logout request failed or tokens already expired");
-    } finally {
-      setUser(null);
-      setInitialized(false);
-      navigate(RoutePath.ATTENDEE, { replace: true });
-      isLogoutInProgress = false;
     }
-  };
+  }, [navigate]);
 
-  const axiosInstance = useAxios(logoutHandler);
+  const { fetchData } = useAxios(handleSessionExpired);
 
-  const initializeAuth = async () => {
+  const initializeAuth = useCallback(async () => {
     if (initialized || initInProgress) return;
 
     setInitInProgress(true);
     try {
-      console.log("[v0] Initializing auth - fetching profile...");
-
-      const result = await axiosInstance.fetchData({
+      const result = await fetchData({
         url: "/profile",
         method: "get",
       });
 
       if (result?.user) {
-        console.log("[v0] User profile fetched");
         setUser(result.user);
       } else {
-        console.log("[v0] No valid session found");
         setUser(null);
       }
-    } catch (error) {
-      console.log("[v0] Not authenticated on init");
+    } catch {
       setUser(null);
     } finally {
       setInitialized(true);
       setInitInProgress(false);
     }
-  };
+  }, [fetchData, initialized, initInProgress]);
 
   useEffect(() => {
     initializeAuth();
   }, []);
 
-  const logout = async () => {
-    logoutHandler();
-  };
+  const logout = useCallback(async () => {
+    if (logoutInProgressRef.current) return;
+    logoutInProgressRef.current = true;
 
-  const loadProfile = async () => {
+    try {
+      await fetchData({
+        url: "/logout",
+        method: "post",
+      });
+    } catch {
+      // Session may already be invalid — still clear local state.
+    } finally {
+      setUser(null);
+      setInitialized(true);
+      navigate(RoutePath.ATTENDEE, { replace: true });
+      logoutInProgressRef.current = false;
+    }
+  }, [fetchData, navigate]);
+
+  const loadProfile = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await axiosInstance.fetchData({
+      const result = await fetchData({
         url: "/profile",
         method: "get",
       });
@@ -85,16 +100,14 @@ export const AuthProvider = ({ children }) => {
         setUser(result.user);
         setInitialized(true);
         return result;
-      } else {
-        setUser(null);
       }
-    } catch (error) {
-      console.error("[v0] Failed to load profile");
+      setUser(null);
+    } catch {
       setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchData]);
 
   return (
     <AuthContext.Provider

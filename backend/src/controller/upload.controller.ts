@@ -1,10 +1,48 @@
 import type { Request, Response } from "express";
-import { userRepository, eventImageRepository } from "../repository/index";
+import {
+  userRepository,
+  eventRepository,
+  eventImageRepository,
+} from "../repository/index";
+import { UserRole } from "../enum/userRole.enum";
 import {
   ProfileImageUploadResponseDto,
   EventImageUploadResponseDto,
   MultipleEventImagesUploadResponseDto,
 } from "../dto/response/upload.response.dto";
+
+async function assertEventUploadAccess(
+  req: Request,
+  eventId: number
+): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+  const tokenUser = req.headers["user"] as { id?: number } | undefined;
+  if (!tokenUser?.id) {
+    return { ok: false, status: 401, message: "User not authenticated" };
+  }
+
+  const actor = await userRepository.findById(tokenUser.id);
+  if (!actor) {
+    return { ok: false, status: 401, message: "User not authenticated" };
+  }
+
+  const event = await eventRepository.findById(eventId);
+  if (!event) {
+    return { ok: false, status: 404, message: "Event not found" };
+  }
+
+  if (actor.role === UserRole.ADMIN) {
+    return { ok: true };
+  }
+
+  if (
+    actor.role === UserRole.ORGANIZER &&
+    event.organizer?.user?.id === actor.id
+  ) {
+    return { ok: true };
+  }
+
+  return { ok: false, status: 403, message: "Forbidden" };
+}
 
 export class UploadController {
   static uploadProfileImage = async (
@@ -90,6 +128,15 @@ export class UploadController {
         return;
       }
 
+      const access = await assertEventUploadAccess(req, eventId);
+      if (access.ok === false) {
+        res.status(access.status).json({
+          success: false,
+          message: access.message,
+        });
+        return;
+      }
+
       const files = req.files as Express.Multer.File[];
       const imagesToSave = files.map((file) => ({
         imageUrl: `/image/event/${file.filename}`,
@@ -148,6 +195,15 @@ export class UploadController {
         res.status(400).json({
           success: false,
           message: "Event ID is required",
+        });
+        return;
+      }
+
+      const access = await assertEventUploadAccess(req, eventId);
+      if (access.ok === false) {
+        res.status(access.status).json({
+          success: false,
+          message: access.message,
         });
         return;
       }

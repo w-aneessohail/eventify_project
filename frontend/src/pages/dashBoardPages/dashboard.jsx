@@ -1,9 +1,11 @@
 // src/pages/dashBoardPages/OrganizerStats.jsx
 import React, { useEffect, useState, useRef, useMemo } from "react";
+import { Link } from "react-router-dom";
 import useAxios from "@/hooks/useAxios";
 import { useAuth } from "@/hooks/useAuth";
 import { HttpMethod } from "../../enum/httpMethod";
 import { API_LIST_LIMIT } from "@/utils/eventHelpers";
+import { RoutePath } from "@/enum/routePath";
 
 const PAGE_SIZE = 10;
 const MAX_PAGE_BUTTONS = 5;
@@ -17,7 +19,7 @@ export default function OrganizerStats() {
   const [error, setError] = useState(null);
 
   // UI state for tabs & pagination
-  const [activeTab, setActiveTab] = useState("approved"); // 'approved' | 'pending'
+  const [activeTab, setActiveTab] = useState("approved"); // 'approved' | 'pending' | 'rejected'
   const [page, setPage] = useState(1);
 
   // refs to prevent duplicate concurrent fetches and to support abort on unmount
@@ -143,8 +145,18 @@ export default function OrganizerStats() {
     [events]
   );
 
+  const rejectedEvents = useMemo(
+    () => events.filter((e) => String((e.status || "").toLowerCase()) === "rejected"),
+    [events]
+  );
+
   // current list and pagination
-  const currentList = activeTab === "approved" ? approvedEvents : pendingEvents;
+  const currentList =
+    activeTab === "approved"
+      ? approvedEvents
+      : activeTab === "pending"
+        ? pendingEvents
+        : rejectedEvents;
   const totalPages = Math.max(1, Math.ceil(currentList.length / PAGE_SIZE));
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const paginatedEvents = currentList.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -188,6 +200,36 @@ export default function OrganizerStats() {
       <h2 className="text-xl font-semibold mb-4">Organizer Stats</h2>
 
       {error && <div className="p-3 bg-red-50 text-red-700 rounded mb-4">{error}</div>}
+
+      {String(user.organizer?.verificationStatus || "").toLowerCase() === "pending" && (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded mb-4">
+          <div className="text-sm font-semibold text-yellow-900">Pending approval</div>
+          <p className="text-sm text-yellow-800 mt-1">
+            Your organizer account is under review. You can prepare events, but they will not go live until approved.
+          </p>
+        </div>
+      )}
+
+      {String(user.organizer?.verificationStatus || "").toLowerCase() === "rejected" && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded mb-4">
+          <div className="text-sm font-semibold text-red-900">Rejected</div>
+          {user.organizer?.rejectionReason ? (
+            <p className="text-sm text-red-800 mt-1">
+              <span className="font-medium">Reason:</span> {user.organizer.rejectionReason}
+            </p>
+          ) : (
+            <p className="text-sm text-red-800 mt-1">
+              Your organizer account was not approved. Update your profile details and contact support if needed.
+            </p>
+          )}
+          <Link
+            to={RoutePath.ORGANIZER_PROFILE}
+            className="inline-block mt-2 text-sm font-medium text-red-900 underline"
+          >
+            Update organizer profile
+          </Link>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white p-4 rounded shadow">
@@ -245,20 +287,65 @@ export default function OrganizerStats() {
               {pendingEvents.length}
             </span>
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("rejected");
+              setPage(1);
+            }}
+            className={`px-4 py-2 rounded-md font-medium ${
+              activeTab === "rejected" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            Rejected{" "}
+            <span className="ml-2 inline-block bg-red-200 text-red-800 text-xs px-2 py-0.5 rounded-full">
+              {rejectedEvents.length}
+            </span>
+          </button>
         </div>
 
         {/* Event list with pagination */}
         <div className="space-y-3">
           {paginatedEvents.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">No events in this category.</div>
+            <div className="p-6 text-center text-gray-500">
+              {activeTab === "approved"
+                ? "No approved events yet. Create your first event to get started."
+                : activeTab === "pending"
+                  ? "No events awaiting approval."
+                  : activeTab === "rejected"
+                    ? "No rejected events."
+                    : "No events found."}
+              {activeTab === "approved" && totalEvents === 0 && (
+                <div className="mt-3">
+                  <Link
+                    to={RoutePath.ORGANIZER_POST_EVENT}
+                    className="text-sky-700 font-medium underline"
+                  >
+                    Post an event
+                  </Link>
+                </div>
+              )}
+            </div>
           ) : (
             paginatedEvents.map((e) => (
               <div key={e.id ?? e._id} className="p-4 border rounded flex items-center justify-between">
                 <div className="flex-1">
                   <div className="text-sm font-semibold">{e.title}</div>
-                  <div className="text-xs text-gray-500">
-                    
-                  </div>
+                  {e.rejectionReason && activeTab === "rejected" && (
+                    <div className="text-xs text-red-700 mt-2 bg-red-50 rounded px-2 py-1">
+                      <span className="font-medium">Rejected</span>
+                      <br />
+                      <span className="font-medium">Reason:</span> {e.rejectionReason}
+                    </div>
+                  )}
+                  {activeTab === "rejected" && (
+                    <Link
+                      to={RoutePath.ORGANIZER_POST_EVENT}
+                      className="inline-block mt-2 text-xs text-sky-700 underline"
+                    >
+                      Post an updated event
+                    </Link>
+                  )}
                   <div className="text-xs text-gray-600 mt-1">
                     {Array.isArray(e.bookings) ? e.bookings.length : 0} bookings • PKR {eventRevenue(e).toLocaleString()}
                   </div>
@@ -269,7 +356,9 @@ export default function OrganizerStats() {
                     className={`px-3 py-1 rounded-full text-xs font-medium ${
                       String((e.status || "").toLowerCase()) === "approved"
                         ? "bg-green-100 text-green-800"
-                        : "bg-yellow-100 text-yellow-800"
+                        : String((e.status || "").toLowerCase()) === "rejected"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-yellow-100 text-yellow-800"
                     }`}
                   >
                     {e.status ?? "pending"}

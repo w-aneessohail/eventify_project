@@ -20,6 +20,22 @@ import { logger } from "../config/logger";
 const ACCESS_TOKEN_KEY = "access_token";
 const REFRESH_TOKEN_KEY = "refresh_token";
 
+async function sendOtpEmail(
+  to: string,
+  subject: string,
+  code: number
+): Promise<void> {
+  try {
+    await Mailer.send({
+      to,
+      subject,
+      html: `<p>Use this OTP to continue:</p><h2>${code}</h2><p>It expires in 10 minutes.</p>`,
+    });
+  } catch (err) {
+    logger.warn({ err }, "Failed to send OTP email");
+  }
+}
+
 export class AuthController {
   static async registerUser(req: Request, res: Response) {
     const { email, password, role, organizerDetails } = req.body;
@@ -39,25 +55,23 @@ export class AuthController {
             .status(409)
             .json({ message: "User already exists and is verified" });
         } else {
-          const otp = OtpTokens.generateOtp();
-          await OtpTokens.setOtp({
+          const issued = await OtpTokens.getOrCreateOtp({
             userId: existing.id,
             purpose: OtpPurpose.REGISTER,
-            code: otp,
           });
 
-          try {
-            await Mailer.send({
-              to: email,
-              subject: "Your Verification OTP",
-              html: `<p>Use this OTP to verify your account:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
-            });
-          } catch (err) {
-            logger.warn({ err }, "Failed to send OTP email");
+          if (!issued.throttled) {
+            await sendOtpEmail(
+              email,
+              "Your Verification OTP",
+              issued.code
+            );
           }
 
           return res.status(200).json({
-            message: "Unverified account found. OTP sent to email.",
+            message: issued.throttled
+              ? "OTP already sent. Check your email or wait a minute before resending."
+              : "Unverified account found. OTP sent to email.",
           });
         }
       }
@@ -81,21 +95,13 @@ export class AuthController {
         });
       }
 
-      const otp = OtpTokens.generateOtp();
-      await OtpTokens.setOtp({
+      const issued = await OtpTokens.getOrCreateOtp({
         userId: user.id,
         purpose: OtpPurpose.REGISTER,
-        code: otp,
       });
 
-      try {
-        await Mailer.send({
-          to: email,
-          subject: "Your Verification OTP",
-          html: `<p>Use this OTP to verify your account:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
-        });
-      } catch (err) {
-        logger.warn({ err }, "Failed to send OTP email");
+      if (!issued.throttled) {
+        await sendOtpEmail(email, "Your Verification OTP", issued.code);
       }
 
       const userWithOrganizer = await userRepository.findById(user.id);
@@ -115,7 +121,7 @@ export class AuthController {
     const user = await userRepository.findByEmail(email);
 
     if (!user || !(await Encrypt.comparePassword(password, user.password))) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Invalid email or password." });
     }
 
     if (!user.isVerified) {
@@ -213,7 +219,7 @@ export class AuthController {
     const done = await OtpTokens.verifyAndConsume({
       userId: user.id,
       purpose: OtpPurpose.REGISTER,
-      code: otp,
+      code: Number(otp),
     });
     if (!done)
       return res.status(400).json({ message: "Invalid or expired OTP" });
@@ -235,24 +241,59 @@ export class AuthController {
     const user = await userRepository.findByEmail(email);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const otp = OtpTokens.generateOtp();
-    await OtpTokens.setOtp({
+    const issued = await OtpTokens.getOrCreateOtp({
       userId: user.id,
       purpose: OtpPurpose.RESET_PASSWORD,
-      code: otp,
     });
 
-    try {
-      await Mailer.send({
-        to: email,
-        subject: "Your Password Reset OTP",
-        html: `<p>Use this OTP to reset your password:</p><h2>${otp}</h2><p>It expires in 10 minutes.</p>`,
+    if (issued.throttled) {
+      return res.status(200).json({
+        message:
+          "If an OTP was recently sent, please check your email or wait a minute before resending.",
       });
-    } catch (err) {
-      logger.warn({ err }, "Failed to send reset OTP email");
     }
 
+    await sendOtpEmail(user.email, "Your Password Reset OTP", issued.code);
+
     return res.status(200).json({ message: "Reset OTP sent to email" });
+  }
+
+  static async resendOtp(req: Request, res: Response) {
+    const { email, purpose } = req.body || {};
+    if (!email || !purpose) {
+      return res.status(400).json({ message: "email and purpose are required" });
+    }
+
+    const user = await userRepository.findByEmail(email);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const otpPurpose =
+      purpose === OtpPurpose.RESET_PASSWORD || purpose === "reset_password"
+        ? OtpPurpose.RESET_PASSWORD
+        : OtpPurpose.REGISTER;
+
+    if (otpPurpose === OtpPurpose.REGISTER && user.isVerified) {
+      return res.status(400).json({ message: "Account is already verified" });
+    }
+
+    const issued = await OtpTokens.getOrCreateOtp({
+      userId: user.id,
+      purpose: otpPurpose,
+    });
+
+    if (issued.throttled) {
+      return res.status(429).json({
+        message: "Please wait a minute before requesting another OTP.",
+      });
+    }
+
+    const subject =
+      otpPurpose === OtpPurpose.RESET_PASSWORD
+        ? "Your Password Reset OTP"
+        : "Your Verification OTP";
+    await sendOtpEmail(user.email, subject, issued.code);
+
+    return res.status(200).json({ message: "OTP sent to email" });
   }
 
   static async resetPassword(req: Request, res: Response) {
@@ -269,7 +310,7 @@ export class AuthController {
     const done = await OtpTokens.verifyAndConsume({
       userId: user.id,
       purpose: OtpPurpose.RESET_PASSWORD,
-      code: otp,
+      code: Number(otp),
     });
     if (!done)
       return res.status(400).json({ message: "Invalid or expired OTP" });

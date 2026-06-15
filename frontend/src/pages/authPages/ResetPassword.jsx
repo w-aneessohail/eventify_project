@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Lock, Eye, EyeOff } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -9,6 +9,7 @@ import Navbar from "@/components/Navbar";
 import useAxios from "@/hooks/useAxios";
 import { HttpMethod } from "@/enum/httpMethod";
 import { RoutePath } from "@/enum/routePath";
+import { getFriendlyErrorMessage } from "@/utils/apiError";
 
 const ResetPassword = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -16,7 +17,14 @@ const ResetPassword = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const email = location.state?.email;
+  const otp = location.state?.otp;
   const { fetchData, error, loading } = useAxios();
+
+  useEffect(() => {
+    if (!email || !otp) {
+      navigate(RoutePath.FORGOT_PASSWORD, { replace: true });
+    }
+  }, [email, otp, navigate]);
 
   const formik = useFormik({
     initialValues: {
@@ -31,25 +39,26 @@ const ResetPassword = () => {
         .oneOf([Yup.ref("password")], "Passwords must match")
         .required("Confirm password is required"),
     }),
-    onSubmit: async (values) => {
-      if (!email) {
+    onSubmit: async (values, { setSubmitting }) => {
+      if (!email || !otp) {
         Swal.fire({
           icon: "error",
           title: "Error",
-          text: "Email missing, please try again",
+          text: "Session expired. Please request a new OTP.",
           confirmButtonColor: "#2b4c91",
         });
         return;
       }
 
-      console.log("[v0] Resetting password for email:", email);
+      setSubmitting(true);
       const result = await fetchData({
         url: "/reset-password",
         method: HttpMethod.POST,
-        data: { email, newPassword: values.password },
+        data: { email, otp, newPassword: values.password },
       });
+      setSubmitting(false);
 
-      if (result && !error) {
+      if (result) {
         Swal.fire({
           icon: "success",
           title: "Password Reset!",
@@ -62,15 +71,19 @@ const ResetPassword = () => {
         Swal.fire({
           icon: "error",
           title: "Reset Failed",
-          text:
+          text: getFriendlyErrorMessage(
             typeof error === "string"
               ? error
               : error?.message || "Could not reset password",
+            "default"
+          ),
           confirmButtonColor: "#2b4c91",
         });
       }
     },
   });
+
+  if (!email || !otp) return null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -90,7 +103,10 @@ const ResetPassword = () => {
             <form onSubmit={formik.handleSubmit}>
               {error && (
                 <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                  {typeof error === "string" ? error : error?.message}
+                  {getFriendlyErrorMessage(
+                    typeof error === "string" ? error : error?.message,
+                    "default"
+                  )}
                 </div>
               )}
 
@@ -110,7 +126,8 @@ const ResetPassword = () => {
                     value={formik.values.password}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className="w-full pl-12 pr-12 py-3.5 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={loading || formik.isSubmitting}
+                    className="w-full pl-12 pr-12 py-3.5 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
                   />
                   <button
                     type="button"
@@ -146,7 +163,8 @@ const ResetPassword = () => {
                     value={formik.values.confirmPassword}
                     onChange={formik.handleChange}
                     onBlur={formik.handleBlur}
-                    className="w-full pl-12 pr-12 py-3.5 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={loading || formik.isSubmitting}
+                    className="w-full pl-12 pr-12 py-3.5 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
                   />
                   <button
                     type="button"
@@ -171,14 +189,15 @@ const ResetPassword = () => {
               <button
                 type="submit"
                 disabled={loading || formik.isSubmitting}
-                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all"
+                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {loading ? "Resetting..." : "Reset Password"}
+                {loading || formik.isSubmitting
+                  ? "Resetting Password..."
+                  : "Reset Password"}
               </button>
             </form>
           </motion.div>
 
-          {/* Right Side - Image */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}

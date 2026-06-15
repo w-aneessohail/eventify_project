@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { eventReviewRepository, eventRepository, userRepository } from "../repository";
 import { ApprovalService } from "../service/approval.service";
+import { UserRole } from "../enum/userRole.enum";
 
 export class EventReviewController {
   static async getAllReviews(req: Request, res: Response) {
@@ -66,10 +67,28 @@ export class EventReviewController {
   static async updateReview(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
-      const updatedReview = await eventReviewRepository.updateReview(
-        id,
-        req.body
-      );
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+      const existing = await eventReviewRepository.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Review not found" });
+      }
+
+      if (
+        !actor ||
+        (actor.role !== UserRole.ADMIN && existing.attendee?.id !== actor.id)
+      ) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const updatedReview = await eventReviewRepository.updateReview(id, {
+        rating: req.body.rating,
+        comment: req.body.comment,
+      });
 
       if (!updatedReview) {
         return res.status(404).json({ message: "Review not found" });
@@ -85,6 +104,24 @@ export class EventReviewController {
   static async deleteReview(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+      const existing = await eventReviewRepository.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Review not found" });
+      }
+
+      if (
+        !actor ||
+        (actor.role !== UserRole.ADMIN && existing.attendee?.id !== actor.id)
+      ) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
       const deleted = await eventReviewRepository.deleteReview(id);
 
       if (!deleted) {

@@ -18,6 +18,14 @@ export type BookabilityResult =
   | { ok: true }
   | { ok: false; message: string };
 
+export class SelfApprovalError extends Error {
+  readonly statusCode = 403;
+  constructor() {
+    super("Cannot approve your own organizer account");
+    this.name = "SelfApprovalError";
+  }
+}
+
 /** Shared approval rules for booking, payment, and public visibility. */
 export class ApprovalService {
   constructor(
@@ -87,12 +95,18 @@ export class ApprovalService {
   ): Promise<Organizer | null> {
     const organizer = await this.organizerRepository.findOne({
       where: { id: organizerId },
+      relations: ["user"],
     });
     if (!organizer) return null;
+
+    if (organizer.user?.id === adminId) {
+      throw new SelfApprovalError();
+    }
 
     organizer.verificationStatus = VerificationStatus.APPROVED;
     organizer.verifiedBy = adminId;
     organizer.verifiedAt = new Date();
+    organizer.rejectionReason = null;
     const saved = await this.organizerRepository.save(organizer);
 
     const withUser = await this.organizerRepository.findOne({
@@ -106,7 +120,8 @@ export class ApprovalService {
 
   async rejectOrganizer(
     organizerId: number,
-    adminId: number
+    adminId: number,
+    reason?: string
   ): Promise<Organizer | null> {
     const organizer = await this.organizerRepository.findOne({
       where: { id: organizerId },
@@ -116,6 +131,7 @@ export class ApprovalService {
     organizer.verificationStatus = VerificationStatus.REJECTED;
     organizer.verifiedBy = adminId;
     organizer.verifiedAt = new Date();
+    organizer.rejectionReason = reason?.trim() || null;
     const saved = await this.organizerRepository.save(organizer);
 
     const withUser = await this.organizerRepository.findOne({
@@ -144,6 +160,7 @@ export class ApprovalService {
     event.status = VerificationStatus.APPROVED;
     event.verifiedBy = adminId;
     event.verifiedAt = new Date();
+    event.rejectionReason = null;
     const saved = await this.eventRepository.save(event);
 
     const withRelations = await this.eventRepository.findOne({
@@ -155,7 +172,11 @@ export class ApprovalService {
     return saved;
   }
 
-  async rejectEvent(eventId: number, adminId: number): Promise<Event | null> {
+  async rejectEvent(
+    eventId: number,
+    adminId: number,
+    reason?: string
+  ): Promise<Event | null> {
     const event = await this.eventRepository.findOne({
       where: { id: eventId },
       relations: ["organizer", "organizer.user"],
@@ -165,6 +186,7 @@ export class ApprovalService {
     event.status = VerificationStatus.REJECTED;
     event.verifiedBy = adminId;
     event.verifiedAt = new Date();
+    event.rejectionReason = reason?.trim() || null;
     const saved = await this.eventRepository.save(event);
 
     await notifyEventRejected(saved);

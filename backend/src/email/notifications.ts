@@ -43,6 +43,7 @@ export async function notifyOrganizerRejected(
       organizerName: organizer.organizerName,
       organizationName: organizer.organizationName,
       status: "rejected",
+      rejectionReason: organizer.rejectionReason,
     }),
   });
 }
@@ -71,6 +72,7 @@ export async function notifyEventRejected(event: Event): Promise<void> {
     html: eventStatusTemplate({
       eventTitle: event.title,
       status: "rejected",
+      rejectionReason: event.rejectionReason,
     }),
   });
 }

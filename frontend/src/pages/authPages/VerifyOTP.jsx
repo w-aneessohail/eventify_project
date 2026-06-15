@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 import Swal from "sweetalert2";
@@ -6,13 +6,24 @@ import Navbar from "@/components/Navbar";
 import { RoutePath } from "@/enum/routePath";
 import useAxios from "@/hooks/useAxios";
 import { HttpMethod } from "@/enum/httpMethod";
+import { getFriendlyErrorMessage } from "@/utils/apiError";
 
 const VerifyOTP = () => {
   const location = useLocation();
   const { email, purpose } = location.state || {};
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [resending, setResending] = useState(false);
   const navigate = useNavigate();
   const { fetchData, error, loading } = useAxios();
+
+  useEffect(() => {
+    if (!email) {
+      navigate(RoutePath.LOGIN, { replace: true });
+    }
+  }, [email, navigate]);
+
+  const otpPurpose =
+    purpose === "forgot-password" ? "reset_password" : "register";
 
   const handleChange = (index, value) => {
     if (value.length <= 1 && /^\d*$/.test(value)) {
@@ -34,59 +45,98 @@ const VerifyOTP = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const otpValue = otp.join("");
+  const handleResend = async () => {
+    if (!email || resending) return;
 
-    if (otpValue.length === 6) {
-      console.log("[v0] Verifying OTP for email:", email);
+    setResending(true);
+    try {
       const result = await fetchData({
-        url: "/verify-otp",
+        url: "/resend-otp",
         method: HttpMethod.POST,
-        data: { email, otp: otpValue },
+        data: { email, purpose: otpPurpose },
       });
 
-      if (result && !error) {
+      if (result) {
         Swal.fire({
           icon: "success",
-          title: "OTP Verified!",
-          text:
-            purpose === "forgot-password"
-              ? "Proceed to reset your password"
-              : "Registration complete! Please login",
+          title: "OTP Sent",
+          text: "A new code has been sent to your email.",
           confirmButtonColor: "#2b4c91",
-        }).then(() => {
-          if (purpose === "forgot-password") {
-            navigate(RoutePath.RESET_PASSWORD, { state: { email } });
-          } else if (purpose === "registration") {
-            navigate(RoutePath.LOGIN);
-          }
         });
       } else {
         Swal.fire({
-          icon: "error",
-          title: "OTP Verification Failed",
-          text:
-            typeof error === "string" ? error : error?.message || "Invalid OTP",
+          icon: "info",
+          title: "Please wait",
+          text: getFriendlyErrorMessage(
+            typeof error === "string" ? error : error?.message,
+            "default"
+          ),
           confirmButtonColor: "#2b4c91",
         });
       }
-    } else {
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+
+    const otpValue = otp.join("");
+
+    if (otpValue.length !== 6) {
       Swal.fire({
         icon: "error",
         title: "Invalid OTP",
         text: "Please enter all 6 digits",
         confirmButtonColor: "#2b4c91",
       });
+      return;
+    }
+
+    if (purpose === "forgot-password") {
+      navigate(RoutePath.RESET_PASSWORD, {
+        state: { email, otp: otpValue },
+      });
+      return;
+    }
+
+    const result = await fetchData({
+      url: "/verify-otp",
+      method: HttpMethod.POST,
+      data: { email, otp: otpValue },
+    });
+
+    if (result) {
+      Swal.fire({
+        icon: "success",
+        title: "OTP Verified!",
+        text: "Registration complete! Please login",
+        confirmButtonColor: "#2b4c91",
+      }).then(() => {
+        navigate(RoutePath.LOGIN);
+      });
+    } else {
+      Swal.fire({
+        icon: "error",
+        title: "OTP Verification Failed",
+        text: getFriendlyErrorMessage(
+          typeof error === "string" ? error : error?.message || "Invalid OTP",
+          "default"
+        ),
+        confirmButtonColor: "#2b4c91",
+      });
     }
   };
+
+  if (!email) return null;
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto bg-white rounded-3xl overflow-hidden shadow-2xl">
-          {/* Left Side - Form */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -101,7 +151,10 @@ const VerifyOTP = () => {
             <form onSubmit={handleSubmit}>
               {error && (
                 <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-                  {typeof error === "string" ? error : error?.message}
+                  {getFriendlyErrorMessage(
+                    typeof error === "string" ? error : error?.message,
+                    "default"
+                  )}
                 </div>
               )}
 
@@ -111,11 +164,13 @@ const VerifyOTP = () => {
                     key={index}
                     id={`otp-${index}`}
                     type="text"
+                    inputMode="numeric"
                     maxLength={1}
                     value={digit}
+                    disabled={loading}
                     onChange={(e) => handleChange(index, e.target.value)}
                     onKeyDown={(e) => handleKeyDown(index, e)}
-                    className="w-14 h-14 text-center text-2xl font-bold border-2 border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                    className="w-14 h-14 text-center text-2xl font-bold border-2 border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary disabled:opacity-50"
                   />
                 ))}
               </div>
@@ -123,7 +178,7 @@ const VerifyOTP = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all mb-6"
+                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all mb-6 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? "Verifying..." : "Verify OTP"}
               </button>
@@ -132,15 +187,16 @@ const VerifyOTP = () => {
                 Didn't receive the code?{" "}
                 <button
                   type="button"
-                  className="text-primary font-semibold hover:text-accent"
+                  disabled={resending || loading}
+                  onClick={handleResend}
+                  className="text-primary font-semibold hover:text-accent disabled:opacity-50"
                 >
-                  Resend OTP
+                  {resending ? "Sending OTP..." : "Resend OTP"}
                 </button>
               </p>
             </form>
           </motion.div>
 
-          {/* Right Side - Image */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}

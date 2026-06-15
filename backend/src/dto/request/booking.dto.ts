@@ -1,4 +1,4 @@
-import { IsNumber, IsEnum, IsOptional, Min } from "class-validator";
+import { IsNumber, IsEnum, Min } from "class-validator";
 import { BookingStatus } from "../../enum/bookingStatus.enum";
 
 export class CreateBookingDto {
@@ -11,11 +11,6 @@ export class CreateBookingDto {
 }
 
 export class UpdateBookingDto {
-  @IsOptional()
-  @IsNumber({}, { message: "Quantity must be a number" })
-  quantity?: number;
-
-  @IsOptional()
   @IsEnum(BookingStatus, { message: "Invalid booking status" })
-  status?: BookingStatus;
+  status: BookingStatus;
 }

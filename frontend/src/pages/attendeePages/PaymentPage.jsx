@@ -1,54 +1,105 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Swal from "sweetalert2";
 import withReactContent from "sweetalert2-react-content";
 import { RoutePath } from "@/enum/routePath";
 import useAxios from "@/hooks/useAxios";
 
 const MySwal = withReactContent(Swal);
+const POLL_INTERVAL_MS = 2000;
+const POLL_MAX_ATTEMPTS = 30;
 
 const Payment = () => {
   const navigate = useNavigate();
   const { bookingId } = useParams();
+  const [searchParams] = useSearchParams();
+  const returnStatus = searchParams.get("status");
   const { fetchData } = useAxios();
   const [booking, setBooking] = useState(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [method, setMethod] = useState("card");
   const [paid, setPaid] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const pollAttempts = useRef(0);
 
-  useEffect(() => {
+  const loadBooking = useCallback(async () => {
     if (!bookingId) {
       setLoadError("Invalid booking");
       setPageLoading(false);
-      return;
+      return null;
     }
 
-    const loadBooking = async () => {
-      setPageLoading(true);
-      setLoadError(null);
-      try {
-        const result = await fetchData({
-          url: `/bookings/${bookingId}`,
-          method: "get",
-        });
-        if (result) {
-          setBooking(result);
-        } else {
-          setLoadError("Booking not found");
+    setPageLoading(true);
+    setLoadError(null);
+
+    try {
+      const result = await fetchData({
+        url: `/bookings/${bookingId}`,
+        method: "get",
+      });
+
+      if (result) {
+        setBooking(result);
+        if (String(result.status || "").toLowerCase() === "confirmed") {
+          setPaid(true);
+        } else if (String(result.status || "").toLowerCase() === "cancelled") {
+          setLoadError("This booking was cancelled and cannot be paid.");
         }
-      } catch (err) {
-        setLoadError(err.message || "Failed to load booking");
-      } finally {
-        setPageLoading(false);
+        return result;
+      }
+
+      setLoadError("Booking not found");
+      return null;
+    } catch (err) {
+      setLoadError(err.message || "Failed to load booking");
+      return null;
+    } finally {
+      setPageLoading(false);
+    }
+  }, [bookingId, fetchData]);
+
+  useEffect(() => {
+    loadBooking();
+  }, [loadBooking]);
+
+  useEffect(() => {
+    if (returnStatus !== "return" || paid || !bookingId) return;
+
+    setConfirming(true);
+    pollAttempts.current = 0;
+
+    const poll = async () => {
+      const result = await fetchData({
+        url: `/bookings/${bookingId}`,
+        method: "get",
+      });
+
+      if (result && String(result.status || "").toLowerCase() === "confirmed") {
+        setBooking(result);
+        setPaid(true);
+        setConfirming(false);
+        return;
+      }
+
+      pollAttempts.current += 1;
+      if (pollAttempts.current < POLL_MAX_ATTEMPTS) {
+        setTimeout(poll, POLL_INTERVAL_MS);
+      } else {
+        setConfirming(false);
       }
     };
 
-    loadBooking();
-  }, [bookingId]);
+    poll();
+  }, [returnStatus, paid, bookingId, fetchData]);
+
+  useEffect(() => {
+    if (returnStatus === "cancelled" && !paid) {
+      setLoadError(null);
+    }
+  }, [returnStatus, paid]);
 
   if (pageLoading) {
     return (
@@ -76,58 +127,143 @@ const Payment = () => {
     );
   }
 
+  if (confirming) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
+        <div className="w-full max-w-md bg-white shadow-lg rounded-2xl p-8 text-center">
+          <h2 className="text-xl font-semibold mb-2 text-gray-800">
+            Confirming your payment…
+          </h2>
+          <p className="text-gray-600 text-sm">
+            Please wait while we verify your payment with Safepay.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (paid) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
+        <div className="w-full max-w-md bg-white shadow-lg rounded-2xl p-8 text-center">
+          <h2 className="text-2xl font-bold mb-4 text-green-700">Payment Complete</h2>
+          <p className="text-gray-600 mb-6">
+            Your booking is confirmed. You can view it in My Bookings.
+          </p>
+          <button
+            onClick={() => navigate(RoutePath.ATTENDEE_MY_BOOKINGS)}
+            className="w-full py-3 rounded-xl font-semibold bg-indigo-600 text-white hover:bg-indigo-700"
+          >
+            View My Bookings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (returnStatus === "cancelled") {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
+        <div className="w-full max-w-md bg-white shadow-lg rounded-2xl p-8 text-center">
+          <h2 className="text-xl font-semibold mb-2 text-gray-800">
+            Payment cancelled
+          </h2>
+          <p className="text-gray-600 mb-6 text-sm">
+            You left the Safepay checkout. Your booking is still pending — you can
+            try again when ready.
+          </p>
+          <button
+            onClick={() => navigate(`/attendee/payment/${bookingId}`)}
+            className="w-full py-3 rounded-xl font-semibold bg-indigo-600 text-white hover:bg-indigo-700 mb-2"
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(RoutePath.ATTENDEE_ALL_EVENTS)}
+            className="w-full py-2 text-sm text-gray-600 hover:text-gray-800"
+          >
+            Back to events
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (returnStatus === "return" && !paid) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4 py-20">
+        <div className="w-full max-w-md bg-white shadow-lg rounded-2xl p-8 text-center">
+          <h2 className="text-xl font-semibold mb-2 text-gray-800">
+            Payment pending confirmation
+          </h2>
+          <p className="text-gray-600 mb-6 text-sm">
+            We have not received confirmation yet. This usually takes a few
+            seconds. Refresh this page or check My Bookings shortly.
+          </p>
+          <button
+            onClick={() => loadBooking()}
+            className="w-full py-3 rounded-xl font-semibold bg-indigo-600 text-white hover:bg-indigo-700 mb-2"
+          >
+            Refresh status
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(RoutePath.ATTENDEE_MY_BOOKINGS)}
+            className="w-full py-2 text-sm text-gray-600 hover:text-gray-800"
+          >
+            Go to My Bookings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const handlePayNow = async () => {
-    if (paid || !booking) return;
+    if (paid || loading || !booking) return;
 
     const result = await MySwal.fire({
-      title: "Confirm Payment",
-      text: `Are you sure you want to pay PKR ${Number(
+      title: "Pay with Safepay",
+      text: `You will be redirected to Safepay to pay PKR ${Number(
         booking.totalAmount
-      ).toFixed(2)}?`,
+      ).toFixed(2)}.`,
       icon: "question",
       showCancelButton: true,
-      confirmButtonText: "Yes, Pay Now",
+      confirmButtonText: "Continue to Safepay",
       cancelButtonText: "Cancel",
     });
 
-    if (result.isConfirmed) {
-      try {
-        setLoading(true);
+    if (!result.isConfirmed) return;
 
-        const paymentResult = await fetchData({
-          url: `/payments/confirm`,
-          method: "post",
-          data: {
-            bookingId: Number(bookingId),
-            method: method,
-          },
-        });
+    try {
+      setLoading(true);
 
-        if (paymentResult) {
-          setPaid(true);
-          await MySwal.fire({
-            title: "Payment Successful!",
-            text: "Your booking is confirmed.",
-            icon: "success",
-            confirmButtonText: "OK",
-          });
-          navigate(RoutePath.ATTENDEE_MY_BOOKINGS);
-        } else {
-          MySwal.fire({
-            title: "Payment Failed",
-            text: "Payment could not be completed. The event may be sold out or the booking is no longer valid.",
-            icon: "error",
-          });
-        }
-      } catch (err) {
-        MySwal.fire({
-          title: "Error",
-          text: err.message || "Payment processing failed",
-          icon: "error",
-        });
-      } finally {
-        setLoading(false);
+      const checkout = await fetchData({
+        url: `/payments`,
+        method: "post",
+        data: {
+          bookingId: Number(bookingId),
+        },
+      });
+
+      if (checkout?.checkoutUrl) {
+        window.location.assign(checkout.checkoutUrl);
+        return;
       }
+
+      MySwal.fire({
+        title: "Checkout unavailable",
+        text: "Could not start Safepay checkout. Please try again.",
+        icon: "error",
+      });
+    } catch (err) {
+      MySwal.fire({
+        title: "Error",
+        text: err.message || "Could not start payment",
+        icon: "error",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -159,75 +295,9 @@ const Payment = () => {
             </div>
           </div>
 
-          <div className="mt-6">
-            <div className="text-sm text-gray-600 mb-2">Payment Methods</div>
-
-            <label
-              className={`flex items-center gap-3 p-3 rounded border ${
-                method === "card"
-                  ? "border-indigo-400 bg-indigo-50"
-                  : "border-gray-200"
-              } cursor-pointer`}
-            >
-              <input
-                type="radio"
-                name="method"
-                value="card"
-                checked={method === "card"}
-                onChange={() => setMethod("card")}
-                className="sr-only"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold">Credit / Debit Card</div>
-                <div className="text-xs text-gray-500">
-                  Visa, Mastercard, Amex
-                </div>
-              </div>
-            </label>
-
-            <label
-              className={`flex items-center gap-3 p-3 mt-3 rounded border ${
-                method === "wallet"
-                  ? "border-indigo-400 bg-indigo-50"
-                  : "border-gray-200"
-              } cursor-pointer`}
-            >
-              <input
-                type="radio"
-                name="method"
-                value="wallet"
-                checked={method === "wallet"}
-                onChange={() => setMethod("wallet")}
-                className="sr-only"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold">Wallet</div>
-                <div className="text-xs text-gray-500">
-                  Pay using wallet balance
-                </div>
-              </div>
-            </label>
-
-            <label
-              className={`flex items-center gap-3 p-3 mt-3 rounded border ${
-                method === "bank_transfer"
-                  ? "border-indigo-400 bg-indigo-50"
-                  : "border-gray-200"
-              } cursor-pointer`}
-            >
-              <input
-                type="radio"
-                name="method"
-                value="bank_transfer"
-                checked={method === "bank_transfer"}
-                onChange={() => setMethod("bank_transfer")}
-                className="sr-only"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-semibold">Bank Transfer</div>
-                <div className="text-xs text-gray-500">Secure bank payment</div>
-              </div>
-            </label>
+          <div className="mt-6 rounded-lg bg-sky-50 border border-sky-100 p-4 text-sm text-sky-900">
+            You will be redirected to Safepay&apos;s secure hosted checkout to pay
+            by card or wallet.
           </div>
         </div>
 
@@ -240,7 +310,15 @@ const Payment = () => {
               : "bg-indigo-600 text-white hover:bg-indigo-700"
           }`}
         >
-          {paid ? "Payment Completed" : loading ? "Processing..." : "Pay Now"}
+          {loading ? "Redirecting…" : "Pay with Safepay"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate(RoutePath.ATTENDEE_ALL_EVENTS)}
+          className="mt-3 w-full py-2 text-sm text-gray-600 hover:text-gray-800"
+        >
+          Cancel and go back
         </button>
       </div>
     </div>

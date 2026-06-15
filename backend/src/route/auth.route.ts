@@ -7,6 +7,7 @@ import { RegisterValidator } from "../middleware/validator/register.validator";
 import { VerifyOtpValidator } from "../middleware/validator/verifyOtp.validator";
 import { ForgotPasswordValidator } from "../middleware/validator/forgotPassword.validator";
 import { ResetPasswordValidator } from "../middleware/validator/resetPassword.validator";
+import { ResendOtpValidator } from "../middleware/validator/resendOtp.validator";
 
 const Router = express.Router();
 
@@ -28,6 +29,12 @@ Router.post(
   authRateLimiter,
   ForgotPasswordValidator,
   AuthController.forgotPassword
+);
+Router.post(
+  "/resend-otp",
+  authRateLimiter,
+  ResendOtpValidator,
+  AuthController.resendOtp
 );
 Router.post(
   "/reset-password",

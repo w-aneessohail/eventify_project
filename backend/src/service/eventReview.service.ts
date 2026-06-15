@@ -32,12 +32,16 @@ export class EventReviewService {
 
   async updateReview(
     id: number,
-    reviewData: Partial<EventReview>
+    reviewData: { rating?: number; comment?: string }
   ): Promise<EventReview | null> {
     const review = await this.reviewRepository.findOne({ where: { id } });
     if (!review) return null;
 
-    this.reviewRepository.merge(review, reviewData);
+    const allowed: Partial<EventReview> = {};
+    if (reviewData.rating !== undefined) allowed.rating = reviewData.rating;
+    if (reviewData.comment !== undefined) allowed.comment = reviewData.comment;
+
+    this.reviewRepository.merge(review, allowed);
     await this.reviewRepository.save(review);
     return this.findById(id);
   }

@@ -43,3 +43,11 @@ export class ResetPasswordDto {
   @IsNotEmpty({ message: "New password is required" })
   newPassword: string;
 }
+
+export class ResendOtpDto {
+  @IsEmail({}, { message: "Invalid email format" })
+  email: string;
+
+  @IsNotEmpty({ message: "Purpose is required" })
+  purpose: string;
+}

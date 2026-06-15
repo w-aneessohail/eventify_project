@@ -108,9 +108,11 @@ const ForgotPassword = () => {
               <button
                 type="submit"
                 disabled={loading || formik.isSubmitting}
-                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all hover-lift mb-6"
+                className="w-full bg-primary text-white py-3.5 rounded-xl font-semibold hover:bg-accent transition-all hover-lift mb-6 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {loading ? "Sending OTP..." : "Send OTP"}
+                {loading || formik.isSubmitting
+                  ? "Sending Reset Email..."
+                  : "Send OTP"}
               </button>
 
               <p className="text-center text-sm">

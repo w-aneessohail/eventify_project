@@ -6,6 +6,8 @@ export class UserResponseDto {
   isVerified: boolean;
   profileImage?: string | null;
   organizer?: unknown;
+  bookingCount?: number;
+  reviewCount?: number;
 
   constructor(user: any) {
     this.id = user.id;
@@ -16,6 +18,12 @@ export class UserResponseDto {
     this.profileImage = user.profileImage ?? null;
     if (user.organizer) {
       this.organizer = user.organizer;
+    }
+    if (Array.isArray(user.bookings)) {
+      this.bookingCount = user.bookings.length;
+    }
+    if (Array.isArray(user.reviews)) {
+      this.reviewCount = user.reviews.length;
     }
   }
 }

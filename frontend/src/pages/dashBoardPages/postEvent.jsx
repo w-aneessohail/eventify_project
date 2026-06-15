@@ -60,6 +60,7 @@ export default function PostEvent() {
   const [categories, setCategories] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingSubmit, setLoadingSubmit] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   // refs to avoid fetch loops if fetchData is unstable
   const catFetchingRef = useRef(false);
@@ -182,6 +183,7 @@ export default function PostEvent() {
       let uploadedImages = [];
       if (values.images?.length) {
         try {
+          setUploadingImages(true);
           uploadedImages = await uploadImages(values.images, createdEvent.id);
         } catch (uploadErr) {
           await MySwal.fire({
@@ -192,6 +194,8 @@ export default function PostEvent() {
             icon: "warning",
             confirmButtonText: "OK",
           });
+        } finally {
+          setUploadingImages(false);
         }
       }
 
@@ -310,7 +314,17 @@ export default function PostEvent() {
                 {/* Images */}
                 <div className="lg:col-span-3 sm:col-span-2">
                   <label className="block text-sm font-medium text-gray-700">Event Images (optional)</label>
-                  <input type="file" multiple accept="image/*" onChange={(e) => handleImageChange(e, setFieldValue)} className="mt-1 block w-full border rounded px-3 py-2" />
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    disabled={isSubmitting || loadingSubmit || uploadingImages}
+                    onChange={(e) => handleImageChange(e, setFieldValue)}
+                    className="mt-1 block w-full border rounded px-3 py-2 disabled:opacity-50"
+                  />
+                  {uploadingImages && (
+                    <p className="text-xs text-sky-700 mt-1">Uploading images…</p>
+                  )}
                   <ErrorMessage name="images" component="div" className="text-xs text-red-600 mt-1" />
                   {previewImages.length > 0 && (
                     <div className="flex flex-wrap gap-3 mt-3">
@@ -324,8 +338,16 @@ export default function PostEvent() {
 
               {/* Buttons */}
               <div className="mt-6 flex gap-3">
-                <button type="submit" disabled={isSubmitting || loadingSubmit} className="px-4 py-2 bg-sky-600 text-white rounded">
-                  {isSubmitting || loadingSubmit ? "Saving..." : "Post Event"}
+                <button
+                  type="submit"
+                  disabled={isSubmitting || loadingSubmit || uploadingImages}
+                  className="px-4 py-2 bg-sky-600 text-white rounded disabled:opacity-50"
+                >
+                  {uploadingImages
+                    ? "Uploading images..."
+                    : isSubmitting || loadingSubmit
+                      ? "Saving..."
+                      : "Post Event"}
                 </button>
               </div>
             </Form>

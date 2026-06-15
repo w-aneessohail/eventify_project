@@ -22,6 +22,7 @@ export function organizerStatusTemplate(params: {
   organizerName: string;
   organizationName: string;
   status: "approved" | "rejected";
+  rejectionReason?: string | null;
 }): string {
   const approved = params.status === "approved";
   const title = approved
@@ -30,6 +31,10 @@ export function organizerStatusTemplate(params: {
   const message = approved
     ? "Your organizer account has been approved. You can now create and manage events on Eventify."
     : "Your organizer account was not approved at this time. Contact support if you have questions.";
+  const reasonRow =
+    !approved && params.rejectionReason
+      ? `<tr><td style="padding: 4px 12px 4px 0; color: #666;">Reason</td><td>${params.rejectionReason}</td></tr>`
+      : "";
 
   return emailLayout({
     title,
@@ -39,6 +44,7 @@ export function organizerStatusTemplate(params: {
       <table style="margin: 16px 0; border-collapse: collapse;">
         <tr><td style="padding: 4px 12px 4px 0; color: #666;">Organization</td><td><strong>${params.organizationName}</strong></td></tr>
         <tr><td style="padding: 4px 12px 4px 0; color: #666;">Status</td><td><strong>${params.status}</strong></td></tr>
+        ${reasonRow}
       </table>
     `,
   });
@@ -47,12 +53,17 @@ export function organizerStatusTemplate(params: {
 export function eventStatusTemplate(params: {
   eventTitle: string;
   status: "approved" | "rejected";
+  rejectionReason?: string | null;
 }): string {
   const approved = params.status === "approved";
   const title = approved ? "Event approved" : "Event not approved";
   const message = approved
     ? "Your event has been approved and is now visible to attendees on Eventify."
     : "Your event was not approved at this time. You may edit and resubmit for review.";
+  const reasonRow =
+    !approved && params.rejectionReason
+      ? `<tr><td style="padding: 4px 12px 4px 0; color: #666;">Reason</td><td>${params.rejectionReason}</td></tr>`
+      : "";
 
   return emailLayout({
     title,
@@ -61,6 +72,7 @@ export function eventStatusTemplate(params: {
       <table style="margin: 16px 0; border-collapse: collapse;">
         <tr><td style="padding: 4px 12px 4px 0; color: #666;">Event</td><td><strong>${params.eventTitle}</strong></td></tr>
         <tr><td style="padding: 4px 12px 4px 0; color: #666;">Status</td><td><strong>${params.status}</strong></td></tr>
+        ${reasonRow}
       </table>
     `,
   });

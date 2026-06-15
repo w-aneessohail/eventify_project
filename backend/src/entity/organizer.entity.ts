@@ -45,6 +45,9 @@ export class Organizer {
   @Column({ type: "timestamp", nullable: true })
   verifiedAt: Date;
 
+  @Column({ type: "text", nullable: true })
+  rejectionReason: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

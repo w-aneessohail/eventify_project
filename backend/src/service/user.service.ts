@@ -79,6 +79,10 @@ export class UserService {
     return { user: updated };
   }
 
+  async countByRole(role: UserRole): Promise<number> {
+    return this.userRepository.count({ where: { role } });
+  }
+
   async deleteUser(id: number): Promise<boolean> {
     const result = await this.userRepository.delete({ id });
     return result.affected !== 0;

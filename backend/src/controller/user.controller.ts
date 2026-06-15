@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { userRepository, organizerRepository } from "../repository";
 import { UserRole } from "../enum/userRole.enum";
 import { toSafeUser } from "../dto/response/user.response.dto";
+import { AccessService } from "../service/access.service";
 
 export class UserController {
   static async getAllUsers(req: Request, res: Response) {
@@ -21,6 +22,21 @@ export class UserController {
 
   static async getUserById(req: Request, res: Response) {
     const id = Number(req.params.id);
+    const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+    if (!tokenUser?.id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const actor = await userRepository.findById(tokenUser.id);
+    if (!actor) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!AccessService.canModifyUser(actor.role, actor.id, id)) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
     const user = await userRepository.findById(id);
 
     if (!user) {
@@ -33,6 +49,12 @@ export class UserController {
   static async createUser(req: Request, res: Response) {
     try {
       const { role, organizerDetails, ...userData } = req.body;
+
+      if (role === UserRole.ADMIN) {
+        return res.status(403).json({
+          message: "Admin accounts cannot be created via this endpoint",
+        });
+      }
 
       if (role === UserRole.ORGANIZER && !organizerDetails) {
         return res.status(400).json({
@@ -114,6 +136,35 @@ export class UserController {
   static async deleteUser(req: Request, res: Response) {
     try {
       const id = Number(req.params.id);
+      const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+      if (!tokenUser?.id) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const actor = await userRepository.findById(tokenUser.id);
+      if (!actor) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      if (id === actor.id) {
+        return res.status(403).json({ message: "You cannot delete your own account" });
+      }
+
+      const target = await userRepository.findById(id);
+      if (!target) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (target.role === UserRole.ADMIN) {
+        const adminCount = await userRepository.countByRole(UserRole.ADMIN);
+        if (adminCount <= 1) {
+          return res.status(403).json({
+            message: "Cannot delete the last admin account",
+          });
+        }
+      }
+
       const deleted = await userRepository.deleteUser(id);
 
       if (!deleted) {

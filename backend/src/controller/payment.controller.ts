@@ -1,5 +1,14 @@
 import type { Request, Response } from "express";
-import { paymentRepository } from "../repository";
+import {
+  paymentRepository,
+  bookingRepository,
+  userRepository,
+} from "../repository";
+import { UserRole } from "../enum/userRole.enum";
+import { BookingStatus } from "../enum/bookingStatus.enum";
+import { PaymentMethod } from "../enum/paymentMethod.enum";
+import { SafepayService } from "../service/safepay.service";
+import { logger } from "../config/logger";
 
 export class PaymentController {
   static async getAllPayments(req: Request, res: Response) {
@@ -19,75 +28,158 @@ export class PaymentController {
 
   static async getPaymentById(req: Request, res: Response) {
     const id = Number(req.params.id);
+    const tokenUser = req.headers["user"] as { id?: number } | undefined;
+
+    if (!tokenUser?.id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const actor = await userRepository.findById(tokenUser.id);
+    if (!actor) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const payment = await paymentRepository.getPaymentById(id);
     if (!payment) return res.status(404).json({ message: "Payment not found" });
+
+    if (actor.role !== UserRole.ADMIN) {
+      const bookingId = payment.booking?.id;
+      if (!bookingId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const access = await bookingRepository.findByIdForActor(
+        bookingId,
+        actor.id,
+        actor.role
+      );
+      if (access.error === "not_found") {
+        return res.status(404).json({ message: "Payment not found" });
+      }
+      if (access.error === "forbidden") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+    }
+
     res.status(200).json(payment);
   }
 
-  /** Simulated checkout today; same handler future gateway webhooks will call. */
-  static async confirmPayment(req: Request, res: Response) {
+  /** Creates a Safepay hosted checkout session and returns the redirect URL. */
+  static async createCheckout(req: Request, res: Response) {
     try {
       const tokenUser = req.headers["user"] as { id?: number } | undefined;
       if (!tokenUser?.id) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const { bookingId, method } = req.body;
-
-      const result = await paymentRepository.confirmPayment({
-        bookingId: Number(bookingId),
-        attendeeId: tokenUser.id,
-        method,
-      });
-
-      if (!result.ok) {
-        const status =
-          result.code === "not_found"
-            ? 404
-            : result.code === "forbidden"
-              ? 403
-              : result.code === "conflict"
-                ? 409
-                : 400;
-        return res.status(status).json({ message: result.message ?? "Payment failed" });
+      const actor = await userRepository.findById(tokenUser.id);
+      if (!actor) {
+        return res.status(401).json({ message: "Unauthorized" });
       }
 
+      const bookingId = Number(req.body.bookingId);
+      const access = await bookingRepository.findByIdForActor(
+        bookingId,
+        actor.id,
+        actor.role
+      );
+
+      if (access.error === "not_found") {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+      if (access.error === "forbidden") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const booking = access.booking;
+      const status = String(booking.status).toLowerCase();
+
+      if (status === BookingStatus.CONFIRMED) {
+        return res.status(409).json({ message: "Booking is already confirmed" });
+      }
+      if (status === BookingStatus.CANCELLED) {
+        return res
+          .status(400)
+          .json({ message: "Booking is cancelled and cannot be paid" });
+      }
+
+      const checkout = await SafepayService.createHostedCheckout({
+        bookingId: booking.id,
+        amountPkr: Number(booking.totalAmount),
+      });
+
       res.status(200).json({
-        payment: result.payment,
-        booking: result.booking,
+        checkoutUrl: checkout.checkoutUrl,
+        trackerToken: checkout.trackerToken,
       });
     } catch (error) {
-      console.error("Error confirming payment:", error);
-      res.status(500).json({ message: "Error processing payment" });
+      logger.error({ err: error }, "Safepay checkout creation failed");
+      res.status(502).json({
+        message: "Unable to start Safepay checkout. Please try again.",
+      });
     }
   }
 
-  static async updatePayment(req: Request, res: Response) {
+  /**
+   * Safepay webhook — verify signature, then delegate to confirmPayment().
+   * Must receive the raw request body (registered before express.json).
+   */
+  static async handleWebhook(req: Request, res: Response) {
+    const rawBody = req.body as Buffer;
+    const signature = req.headers["x-sfpy-signature"] as string | undefined;
+
+    if (!Buffer.isBuffer(rawBody) || rawBody.length === 0) {
+      return res.status(400).json({ message: "Missing webhook body" });
+    }
+
+    if (!SafepayService.verifyWebhookSignature(rawBody, signature)) {
+      logger.warn("Safepay webhook signature verification failed");
+      return res.status(400).json({ message: "Invalid webhook signature" });
+    }
+
+    let payload: unknown;
     try {
-      const id = Number(req.params.id);
-      const updatedPayment = await paymentRepository.updatePayment(
-        id,
-        req.body
+      payload = JSON.parse(rawBody.toString("utf8"));
+    } catch {
+      return res.status(400).json({ message: "Invalid webhook JSON" });
+    }
+
+    const parsed = SafepayService.parseWebhookPayload(payload);
+
+    if (!parsed.isPaymentSuccess) {
+      return res.status(200).json({ received: true, action: "ignored" });
+    }
+
+    let bookingId = parsed.bookingId;
+    if (!bookingId) {
+      logger.warn({ eventType: parsed.eventType }, "Webhook missing booking_id");
+      return res.status(200).json({ received: true, action: "no_booking_id" });
+    }
+
+    const booking = await bookingRepository.findById(bookingId);
+    if (!booking?.attendee?.id) {
+      logger.warn({ bookingId }, "Webhook booking not found");
+      return res.status(200).json({ received: true, action: "booking_not_found" });
+    }
+
+    const result = await paymentRepository.confirmPayment({
+      bookingId,
+      attendeeId: booking.attendee.id,
+      method: PaymentMethod.CARD,
+      externalTransactionId: parsed.tracker ?? undefined,
+    });
+
+    if (!result.ok) {
+      logger.warn(
+        { bookingId, code: result.code, message: result.message },
+        "Safepay webhook confirmPayment did not succeed"
       );
-      if (!updatedPayment)
-        return res.status(404).json({ message: "Payment not found" });
-      res.status(200).json(updatedPayment);
-    } catch (error) {
-      console.error("Error updating payment:", error);
-      res.status(500).json({ message: "Error updating payment" });
     }
-  }
 
-  static async deletePayment(req: Request, res: Response) {
-    try {
-      const id = Number(req.params.id);
-      const deleted = await paymentRepository.deletePayment(id);
-      if (!deleted)
-        return res.status(404).json({ message: "Payment not found" });
-      res.status(200).json({ message: "Payment deleted successfully" });
-    } catch (error) {
-      console.error("Error deleting payment:", error);
-      res.status(500).json({ message: "Error deleting payment" });
-    }
+    return res.status(200).json({
+      received: true,
+      confirmed: result.ok,
+      newlyConfirmed: result.newlyConfirmed === true,
+    });
   }
 }

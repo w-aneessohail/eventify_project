@@ -197,33 +197,38 @@ export class BookingService {
 
 
   async updateBooking(
-
     id: number,
-
     bookingData: Partial<Booking>
-
   ): Promise<Booking | null> {
-
     const booking = await this.bookingRepository.findOne({
-
       where: { id },
-
       relations: ["event", "attendee", "payment"],
-
     });
-
-
 
     if (!booking) return null;
 
+    const allowed: Partial<Booking> = {};
+    if (bookingData.status !== undefined) {
+      allowed.status = bookingData.status;
+    }
 
-
-    this.bookingRepository.merge(booking, bookingData);
-
+    this.bookingRepository.merge(booking, allowed);
     await this.bookingRepository.save(booking);
-
     return this.findById(id);
+  }
 
+  /** Attendee may only cancel a pending booking via PUT. */
+  async cancelPendingBooking(id: number): Promise<Booking | null> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) return null;
+
+    if (String(booking.status).toLowerCase() !== BookingStatus.PENDING) {
+      return null;
+    }
+
+    booking.status = BookingStatus.CANCELLED;
+    await this.bookingRepository.save(booking);
+    return this.findById(id);
   }
 
 
