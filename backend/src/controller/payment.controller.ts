@@ -132,9 +132,29 @@ export class PaymentController {
       return res.status(400).json({ message: "Missing webhook body" });
     }
 
-    if (!SafepayService.verifyWebhookSignature(rawBody, signature)) {
-      logger.warn("Safepay webhook signature verification failed");
-      return res.status(400).json({ message: "Invalid webhook signature" });
+    const verification = SafepayService.verifyWebhookSignature(rawBody, signature);
+
+    if (verification.ok === false) {
+      if (verification.reason === "missing_secret") {
+        logger.error(
+          "Safepay webhook rejected: SAFEPAY_WEBHOOK_SECRET is not configured"
+        );
+        return res.status(503).json({
+          message:
+            "Webhook signing secret is not configured. Set SAFEPAY_WEBHOOK_SECRET.",
+        });
+      }
+
+      logger.warn(
+        { reason: verification.reason },
+        "Safepay webhook signature verification failed"
+      );
+      return res.status(400).json({
+        message:
+          verification.reason === "missing_signature"
+            ? "Missing X-SFPY-SIGNATURE header"
+            : "Invalid webhook signature",
+      });
     }
 
     let payload: unknown;
@@ -146,13 +166,24 @@ export class PaymentController {
 
     const parsed = SafepayService.parseWebhookPayload(payload);
 
+    logger.info(
+      {
+        eventType: parsed.eventType,
+        tracker: parsed.tracker,
+        bookingId: parsed.bookingId,
+        isPaymentSuccess: parsed.isPaymentSuccess,
+        signatureValid: true,
+      },
+      "Safepay webhook received"
+    );
+
     if (!parsed.isPaymentSuccess) {
       return res.status(200).json({ received: true, action: "ignored" });
     }
 
     let bookingId = parsed.bookingId;
     if (!bookingId) {
-      logger.warn({ eventType: parsed.eventType }, "Webhook missing booking_id");
+      logger.warn({ eventType: parsed.eventType }, "Webhook missing order_id");
       return res.status(200).json({ received: true, action: "no_booking_id" });
     }
 
@@ -169,12 +200,20 @@ export class PaymentController {
       externalTransactionId: parsed.tracker ?? undefined,
     });
 
-    if (!result.ok) {
-      logger.warn(
-        { bookingId, code: result.code, message: result.message },
-        "Safepay webhook confirmPayment did not succeed"
-      );
-    }
+    logger.info(
+      {
+        eventType: parsed.eventType,
+        tracker: parsed.tracker,
+        bookingId,
+        confirmPaymentExecuted: true,
+        confirmed: result.ok,
+        newlyConfirmed: result.newlyConfirmed === true,
+        code: result.ok ? undefined : result.code,
+      },
+      result.ok
+        ? "Safepay webhook confirmPayment succeeded"
+        : "Safepay webhook confirmPayment did not succeed"
+    );
 
     return res.status(200).json({
       received: true,

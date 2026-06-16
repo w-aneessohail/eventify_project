@@ -38,7 +38,7 @@ export function getSafepayConfig(): SafepayConfig {
   cachedSafepayConfig = {
     publicKey: requireSafepayEnv("SAFEPAY_PUBLIC_KEY"),
     secretKey: requireSafepayEnv("SAFEPAY_SECRET_KEY"),
-    webhookSecret: requireSafepayEnv("SAFEPAY_WEBHOOK_SECRET"),
+    webhookSecret: process.env.SAFEPAY_WEBHOOK_SECRET?.trim() || "",
     environment,
     apiHost,
     frontendUrl,

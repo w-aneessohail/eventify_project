@@ -32,6 +32,7 @@ app.use(
     // CSP omitted — static uploads and Vite dev origins vary; add when frontend is finalized.
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 

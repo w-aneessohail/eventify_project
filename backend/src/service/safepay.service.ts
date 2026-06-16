@@ -169,17 +169,27 @@ export class SafepayService {
   static verifyWebhookSignature(
     rawBody: Buffer,
     signatureHeader: string | undefined
-  ): boolean {
-    if (!signatureHeader?.trim()) return false;
-
+  ): { ok: true } | { ok: false; reason: "missing_secret" | "missing_signature" | "invalid_signature" } {
     const secret = getSafepayConfig().webhookSecret;
+    if (!secret) {
+      return { ok: false, reason: "missing_secret" };
+    }
+
+    if (!signatureHeader?.trim()) {
+      return { ok: false, reason: "missing_signature" };
+    }
+
     const payload = rawBody.toString("utf8");
     const expected = crypto
       .createHmac("sha512", secret)
       .update(payload, "utf8")
       .digest("hex");
 
-    return secureCompare(expected, signatureHeader.trim());
+    if (!secureCompare(expected, signatureHeader.trim())) {
+      return { ok: false, reason: "invalid_signature" };
+    }
+
+    return { ok: true };
   }
 
   static parseWebhookPayload(payload: unknown): ParsedSafepayWebhook {

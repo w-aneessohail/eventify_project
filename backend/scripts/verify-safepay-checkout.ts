@@ -2,7 +2,7 @@
  * Smoke test for Safepay hosted checkout session creation.
  * Usage: npx ts-node scripts/verify-safepay-checkout.ts
  *
- * Requires SAFEPAY_PUBLIC_KEY, SAFEPAY_SECRET_KEY, SAFEPAY_WEBHOOK_SECRET in .env
+ * Requires SAFEPAY_PUBLIC_KEY and SAFEPAY_SECRET_KEY in .env (Developer → API).
  */
 import * as dotenv from "dotenv";
 dotenv.config();

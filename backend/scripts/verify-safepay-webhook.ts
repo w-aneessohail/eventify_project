@@ -38,11 +38,13 @@ async function main() {
   });
 
   const sig = signWebhook(payload, process.env.SAFEPAY_WEBHOOK_SECRET!);
-  const valid = SafepayService.verifyWebhookSignature(
+  const verification = SafepayService.verifyWebhookSignature(
     Buffer.from(payload, "utf8"),
     sig
   );
-  if (!valid) throw new Error("Webhook signature verification failed");
+  if (verification.ok === false) {
+    throw new Error(`Webhook signature verification failed: ${verification.reason}`);
+  }
 
   const parsed = SafepayService.parseWebhookPayload(JSON.parse(payload));
   if (!parsed.isPaymentSuccess || parsed.bookingId !== 1) {

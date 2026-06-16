@@ -29,10 +29,10 @@ const profileStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const randomNum = generateRandomNumber();
-    const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext);
-    const filename = `${baseName}-${randomNum}${ext}`;
-    cb(null, filename);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const baseName = path.basename(file.originalname, path.extname(file.originalname));
+    const safeBase = sanitizeName(baseName) || "profile";
+    cb(null, `${safeBase}-${randomNum}${ext}`);
   },
 });
 
@@ -46,10 +46,10 @@ const eventStorage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const randomNum = generateRandomNumber();
-    const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext);
-    const filename = `${baseName}-${randomNum}${ext}`;
-    cb(null, filename);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const baseName = path.basename(file.originalname, path.extname(file.originalname));
+    const safeBase = sanitizeName(baseName) || "event";
+    cb(null, `${safeBase}-${randomNum}${ext}`);
   },
 });
 

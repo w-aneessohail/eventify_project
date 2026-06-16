@@ -7,7 +7,12 @@ export const getApiOrigin = () => API_BASE.replace(/\/api\/?$/, "");
 export const getMediaUrl = (path, fallback = null) => {
   if (!path) return fallback;
   if (path.startsWith("http") || path.startsWith("blob:")) return path;
-  return `${getApiOrigin()}${path}`;
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  const encoded = normalized
+    .split("/")
+    .map((segment) => (segment === "" ? "" : encodeURIComponent(segment)))
+    .join("/");
+  return `${getApiOrigin()}${encoded}`;
 };
 
 export const getEventImageUrl = (event, fallback = "/placeholder.svg") => {

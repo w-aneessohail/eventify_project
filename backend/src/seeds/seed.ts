@@ -378,7 +378,14 @@ function ensurePlaceholderImage(): string {
   const filename = "seed-default.jpg";
   const filepath = path.join(eventDir, filename);
   if (!fs.existsSync(filepath)) {
-    fs.writeFileSync(filepath, MINIMAL_JPEG);
+    const existing = fs
+      .readdirSync(eventDir)
+      .find((f) => /\.(jpe?g|png|webp)$/i.test(f) && f !== filename);
+    if (existing) {
+      fs.copyFileSync(path.join(eventDir, existing), filepath);
+    } else {
+      fs.writeFileSync(filepath, MINIMAL_JPEG);
+    }
   }
   return `/image/event/${filename}`;
 }

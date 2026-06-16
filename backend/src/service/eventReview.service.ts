@@ -4,13 +4,28 @@ import type { EventReview } from "../entity/eventReview.entity";
 export class EventReviewService {
   constructor(private reviewRepository: Repository<EventReview>) {}
 
+  private buildWhere(whereParams: Record<string, unknown> = {}) {
+    const where: Record<string, unknown> = {};
+
+    if (whereParams.eventId !== undefined && whereParams.eventId !== "") {
+      where.event = { id: Number(whereParams.eventId) };
+    }
+
+    const attendeeId = whereParams.userId ?? whereParams.attendeeId;
+    if (attendeeId !== undefined && attendeeId !== "") {
+      where.attendee = { id: Number(attendeeId) };
+    }
+
+    return where;
+  }
+
   async findAll(
-    whereParams: any = {},
+    whereParams: Record<string, unknown> = {},
     skip = 0,
     limit = 10
   ): Promise<EventReview[]> {
     return this.reviewRepository.find({
-      where: { ...whereParams },
+      where: this.buildWhere(whereParams),
       relations: ["event", "attendee"],
       order: { createdAt: "DESC" },
       skip,

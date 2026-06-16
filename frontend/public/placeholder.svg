@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500" role="img" aria-label="Event placeholder">
+  <rect width="800" height="500" fill="#e5e7eb"/>
+  <rect x="280" y="150" width="240" height="160" rx="8" fill="#d1d5db"/>
+  <circle cx="340" cy="200" r="24" fill="#9ca3af"/>
+  <path d="M300 280 L380 220 L440 260 L500 200 L540 280 Z" fill="#9ca3af"/>
+  <text x="400" y="360" text-anchor="middle" fill="#6b7280" font-family="system-ui,sans-serif" font-size="20">No event image</text>
+</svg>
