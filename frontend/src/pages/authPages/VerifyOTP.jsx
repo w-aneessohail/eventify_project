@@ -96,9 +96,27 @@ const VerifyOTP = () => {
     }
 
     if (purpose === "forgot-password") {
-      navigate(RoutePath.RESET_PASSWORD, {
-        state: { email, otp: otpValue },
+      const result = await fetchData({
+        url: "/validate-reset-otp",
+        method: HttpMethod.POST,
+        data: { email, otp: otpValue },
       });
+
+      if (result) {
+        navigate(RoutePath.RESET_PASSWORD, {
+          state: { email, otp: otpValue },
+        });
+      } else {
+        Swal.fire({
+          icon: "error",
+          title: "OTP Verification Failed",
+          text: getFriendlyErrorMessage(
+            typeof error === "string" ? error : error?.message || "Invalid OTP",
+            "default"
+          ),
+          confirmButtonColor: "#2b4c91",
+        });
+      }
       return;
     }
 

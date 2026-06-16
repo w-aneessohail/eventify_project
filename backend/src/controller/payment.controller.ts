@@ -108,6 +108,22 @@ export class PaymentController {
         amountPkr: Number(booking.totalAmount),
       });
 
+      const pendingPayment = await paymentRepository.ensurePendingSafepayPayment({
+        bookingId: booking.id,
+        trackerToken: checkout.trackerToken,
+        amount: Number(booking.totalAmount),
+      });
+
+      logger.info(
+        {
+          bookingId: booking.id,
+          tracker: checkout.trackerToken,
+          pendingPaymentCreated: pendingPayment.created,
+          pendingPaymentUpdated: pendingPayment.updated,
+        },
+        "Safepay checkout session created"
+      );
+
       res.status(200).json({
         checkoutUrl: checkout.checkoutUrl,
         trackerToken: checkout.trackerToken,
@@ -127,14 +143,18 @@ export class PaymentController {
   static async handleWebhook(req: Request, res: Response) {
     const rawBody = req.body as Buffer;
     const signature = req.headers["x-sfpy-signature"] as string | undefined;
+    const rawPayloadText = Buffer.isBuffer(rawBody)
+      ? rawBody.toString("utf8")
+      : "";
 
     if (!Buffer.isBuffer(rawBody) || rawBody.length === 0) {
       return res.status(400).json({ message: "Missing webhook body" });
     }
 
     const verification = SafepayService.verifyWebhookSignature(rawBody, signature);
+    const signatureValid = verification.ok === true;
 
-    if (verification.ok === false) {
+    if (!signatureValid) {
       if (verification.reason === "missing_secret") {
         logger.error(
           "Safepay webhook rejected: SAFEPAY_WEBHOOK_SECRET is not configured"
@@ -146,7 +166,7 @@ export class PaymentController {
       }
 
       logger.warn(
-        { reason: verification.reason },
+        { reason: verification.reason, signatureValid: false },
         "Safepay webhook signature verification failed"
       );
       return res.status(400).json({
@@ -159,20 +179,26 @@ export class PaymentController {
 
     let payload: unknown;
     try {
-      payload = JSON.parse(rawBody.toString("utf8"));
+      payload = JSON.parse(rawPayloadText);
     } catch {
       return res.status(400).json({ message: "Invalid webhook JSON" });
     }
 
     const parsed = SafepayService.parseWebhookPayload(payload);
+    let bookingId = parsed.bookingId;
+    let bookingIdSource: string = bookingId ? "payload" : "none";
 
     logger.info(
       {
         eventType: parsed.eventType,
         tracker: parsed.tracker,
-        bookingId: parsed.bookingId,
+        bookingId,
+        orderId: bookingId,
+        metadata: parsed.rawMetadata,
+        rawPayload: payload,
         isPaymentSuccess: parsed.isPaymentSuccess,
-        signatureValid: true,
+        signatureValid,
+        confirmPaymentCalled: false,
       },
       "Safepay webhook received"
     );
@@ -181,34 +207,88 @@ export class PaymentController {
       return res.status(200).json({ received: true, action: "ignored" });
     }
 
-    let bookingId = parsed.bookingId;
+    if (!bookingId && parsed.tracker) {
+      const fromPayment = await paymentRepository.findBookingIdByTracker(
+        parsed.tracker
+      );
+      if (fromPayment) {
+        bookingId = fromPayment;
+        bookingIdSource = "pending_payment_tracker";
+      }
+    }
+
+    if (!bookingId && parsed.tracker) {
+      const fromTracker = await SafepayService.fetchTrackerBookingId(
+        parsed.tracker
+      );
+      if (fromTracker) {
+        bookingId = fromTracker;
+        bookingIdSource = "safepay_tracker_api";
+      }
+    }
+
     if (!bookingId) {
-      logger.warn({ eventType: parsed.eventType }, "Webhook missing order_id");
+      logger.warn(
+        {
+          eventType: parsed.eventType,
+          tracker: parsed.tracker,
+          metadata: parsed.rawMetadata,
+        },
+        "Webhook missing order_id after all resolution attempts"
+      );
       return res.status(200).json({ received: true, action: "no_booking_id" });
     }
 
     const booking = await bookingRepository.findById(bookingId);
     if (!booking?.attendee?.id) {
-      logger.warn({ bookingId }, "Webhook booking not found");
+      logger.warn({ bookingId, bookingIdSource }, "Webhook booking not found");
       return res.status(200).json({ received: true, action: "booking_not_found" });
     }
 
-    const result = await paymentRepository.confirmPayment({
-      bookingId,
-      attendeeId: booking.attendee.id,
-      method: PaymentMethod.CARD,
-      externalTransactionId: parsed.tracker ?? undefined,
-    });
+    let result;
+    let confirmPaymentCalled = false;
+
+    try {
+      confirmPaymentCalled = true;
+      result = await paymentRepository.confirmPayment({
+        bookingId,
+        attendeeId: booking.attendee.id,
+        method: PaymentMethod.CARD,
+        externalTransactionId: parsed.tracker ?? undefined,
+      });
+    } catch (err) {
+      logger.error(
+        {
+          err,
+          eventType: parsed.eventType,
+          tracker: parsed.tracker,
+          bookingId,
+          bookingIdSource,
+          stack: err instanceof Error ? err.stack : undefined,
+        },
+        "Safepay webhook confirmPayment threw"
+      );
+      return res.status(500).json({
+        message: "Payment confirmation failed",
+        received: true,
+      });
+    }
 
     logger.info(
       {
         eventType: parsed.eventType,
         tracker: parsed.tracker,
         bookingId,
-        confirmPaymentExecuted: true,
-        confirmed: result.ok,
-        newlyConfirmed: result.newlyConfirmed === true,
-        code: result.ok ? undefined : result.code,
+        bookingIdSource,
+        metadata: parsed.rawMetadata,
+        signatureValid,
+        confirmPaymentCalled,
+        confirmPaymentResult: {
+          ok: result.ok,
+          newlyConfirmed: result.newlyConfirmed === true,
+          code: result.ok ? undefined : result.code,
+          message: result.ok ? undefined : result.message,
+        },
       },
       result.ok
         ? "Safepay webhook confirmPayment succeeded"
@@ -219,6 +299,7 @@ export class PaymentController {
       received: true,
       confirmed: result.ok,
       newlyConfirmed: result.newlyConfirmed === true,
+      code: result.ok ? undefined : result.code,
     });
   }
 }

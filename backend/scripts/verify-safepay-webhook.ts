@@ -14,6 +14,7 @@ import { PaymentService } from "../src/service/payment.service";
 import { Payment } from "../src/entity/payment.entity";
 import { SafepayService } from "../src/service/safepay.service";
 import { PaymentMethod } from "../src/enum/paymentMethod.enum";
+import { PaymentStatus } from "../src/enum/paymentStatus.enum";
 import { BookingService } from "../src/service/booking.service";
 
 function signWebhook(body: string, secret: string): string {
@@ -51,7 +52,26 @@ async function main() {
     throw new Error("Webhook payload parsing failed");
   }
 
-  console.log("✓ Webhook signature and payload parsing");
+  const v2Payload = {
+    type: "payment:created",
+    notification: {
+      tracker: "track_v2_test",
+      reference: "42",
+      state: "PAID",
+      metadata: {
+        order_id: {
+          key: "order_id",
+          value: "42",
+        },
+      },
+    },
+  };
+  const v2Parsed = SafepayService.parseWebhookPayload(v2Payload);
+  if (!v2Parsed.isPaymentSuccess || v2Parsed.bookingId !== 42) {
+    throw new Error("V2 notification webhook parsing failed");
+  }
+
+  console.log("✓ Webhook signature and payload parsing (legacy + V2)");
 
   await dataSource.initialize();
   const bookingRepo = dataSource.getRepository(Booking);
@@ -81,17 +101,46 @@ async function main() {
   }
 
   const bookingId = createResult.booking.id;
-  const webhookPayload = JSON.stringify({
+  const tracker = `track_verify_${bookingId}`;
+
+  await paymentService.ensurePendingSafepayPayment({
+    bookingId,
+    trackerToken: tracker,
+    amount: Number(createResult.booking.totalAmount),
+  });
+
+  const pending = await paymentRepo
+    .createQueryBuilder("payment")
+    .where('payment."bookingId" = :bookingId', { bookingId })
+    .getOne();
+  if (!pending || pending.status !== PaymentStatus.PENDING) {
+    throw new Error("Pending payment row was not created at checkout");
+  }
+
+  const trackerOnlyPayload = {
+    type: "payment:created",
+    notification: {
+      tracker,
+      state: "PAID",
+      metadata: { source: "checkout" },
+    },
+  };
+  const trackerOnlyParsed = SafepayService.parseWebhookPayload(trackerOnlyPayload);
+  if (trackerOnlyParsed.isPaymentSuccess) {
+    const resolved = await paymentService.findBookingIdByTracker(tracker);
+    if (resolved !== bookingId) {
+      throw new Error("Tracker → booking resolution failed");
+    }
+  }
+
+  const webhookParsed = SafepayService.parseWebhookPayload({
     type: "payment.succeeded",
     data: {
-      tracker: `track_verify_${bookingId}`,
+      tracker,
       success: true,
       metadata: { order_id: String(bookingId) },
     },
   });
-  const webhookParsed = SafepayService.parseWebhookPayload(
-    JSON.parse(webhookPayload)
-  );
 
   const confirm1 = await paymentService.confirmPayment({
     bookingId: webhookParsed.bookingId!,
@@ -113,7 +162,7 @@ async function main() {
     throw new Error("Duplicate confirm should be idempotent without newlyConfirmed");
   }
 
-  console.log("✓ confirmPayment idempotent via webhook-style call");
+  console.log("✓ Pending payment + tracker resolution + confirmPayment idempotency");
   console.log("\nVERIFY SAFEPAY WEBHOOK: SUCCESS");
   await dataSource.destroy();
 }

@@ -25,6 +25,12 @@ Router.post(
   AuthController.verifyOtp
 );
 Router.post(
+  "/validate-reset-otp",
+  authRateLimiter,
+  VerifyOtpValidator,
+  AuthController.validateResetOtp
+);
+Router.post(
   "/forgot-password",
   authRateLimiter,
   ForgotPasswordValidator,

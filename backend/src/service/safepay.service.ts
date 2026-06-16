@@ -14,13 +14,126 @@ function parseBookingId(value: unknown): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-function bookingIdFromMetadata(metadata: Record<string, unknown>): number | null {
-  const direct = parseBookingId(metadata.order_id ?? metadata.booking_id);
-  if (direct) return direct;
+/** Safepay metadata fields may be plain strings or { key, value } objects. */
+function readMetadataField(
+  metadata: Record<string, unknown>,
+  key: string
+): unknown {
+  const raw = metadata[key];
+  if (raw && typeof raw === "object" && raw !== null) {
+    const entry = raw as Record<string, unknown>;
+    if ("value" in entry) return entry.value;
+  }
+  return raw;
+}
 
-  if (metadata.data && typeof metadata.data === "object") {
-    const nested = metadata.data as Record<string, unknown>;
-    return parseBookingId(nested.order_id ?? nested.booking_id);
+function bookingIdFromMetadata(metadata: unknown): number | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const record = metadata as Record<string, unknown>;
+
+  for (const key of ["order_id", "booking_id", "orderId", "bookingId"]) {
+    const id = parseBookingId(readMetadataField(record, key));
+    if (id) return id;
+  }
+
+  for (const value of Object.values(record)) {
+    if (!value || typeof value !== "object") continue;
+    const entry = value as Record<string, unknown>;
+    if (
+      (entry.key === "order_id" || entry.key === "booking_id") &&
+      "value" in entry
+    ) {
+      const id = parseBookingId(entry.value);
+      if (id) return id;
+    }
+  }
+
+  if (record.data && typeof record.data === "object") {
+    return bookingIdFromMetadata(record.data);
+  }
+
+  return null;
+}
+
+function extractTracker(raw: unknown): string | null {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (raw && typeof raw === "object" && raw !== null) {
+    const token = (raw as { token?: unknown }).token;
+    if (typeof token === "string" && token.trim()) return token.trim();
+  }
+  return null;
+}
+
+function isPaymentSuccessEvent(
+  eventType: string,
+  state: string,
+  flags: { success?: unknown }
+): boolean {
+  const normalizedType = eventType.toLowerCase();
+  const normalizedState = state.toUpperCase();
+
+  if (
+    normalizedType === "payment.succeeded" ||
+    normalizedType === "payment.completed" ||
+    normalizedType === "payment:created" ||
+    normalizedType === "payment:completed" ||
+    normalizedType === "payment:settled"
+  ) {
+    return true;
+  }
+
+  if (flags.success === true) return true;
+  if (normalizedState === "PAID" || normalizedState === "TRACKER_ENDED") {
+    return true;
+  }
+
+  return false;
+}
+
+function collectBookingIdFromRecord(
+  record: Record<string, unknown>
+): number | null {
+  const fromMeta = bookingIdFromMetadata(record.metadata);
+  if (fromMeta) return fromMeta;
+
+  for (const key of ["order_id", "orderId", "reference", "booking_id"]) {
+    const id = parseBookingId(record[key]);
+    if (id) return id;
+  }
+
+  return null;
+}
+
+function collectBookingIdCandidates(
+  body: Record<string, unknown>,
+  ...objects: unknown[]
+): number | null {
+  for (const obj of objects) {
+    if (!obj || typeof obj !== "object") continue;
+    const id = collectBookingIdFromRecord(obj as Record<string, unknown>);
+    if (id) return id;
+  }
+
+  const topLevel = collectBookingIdFromRecord(body);
+  if (topLevel) return topLevel;
+
+  const order = body.order;
+  if (order && typeof order === "object") {
+    const id = bookingIdFromMetadata(
+      (order as Record<string, unknown>).metadata
+    );
+    if (id) return id;
+  }
+
+  const data = body.data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const dataOrder = (data as Record<string, unknown>).order;
+    if (dataOrder && typeof dataOrder === "object") {
+      const id = bookingIdFromMetadata(
+        (dataOrder as Record<string, unknown>).metadata
+      );
+      if (id) return id;
+    }
   }
 
   return null;
@@ -36,6 +149,7 @@ export type ParsedSafepayWebhook = {
   isPaymentSuccess: boolean;
   bookingId: number | null;
   tracker: string | null;
+  rawMetadata: unknown;
 };
 
 const CHECKOUT_HOSTS = {
@@ -65,9 +179,10 @@ export class SafepayService {
 
     if (!response.ok) {
       const errors = json?.status?.errors;
-      const detail = Array.isArray(errors) && errors.length > 0
-        ? errors.join("; ")
-        : json?.status?.message;
+      const detail =
+        Array.isArray(errors) && errors.length > 0
+          ? errors.join("; ")
+          : json?.status?.message;
       throw new Error(
         detail || `Safepay API error (${response.status}) on ${path}`
       );
@@ -142,9 +257,7 @@ export class SafepayService {
 
     const passportData = passportResponse.data;
     const tbt =
-      typeof passportData === "string"
-        ? passportData
-        : passportData?.token;
+      typeof passportData === "string" ? passportData : passportData?.token;
 
     if (!tbt) {
       throw new Error("Safepay did not return a passport token");
@@ -163,13 +276,50 @@ export class SafepayService {
   }
 
   /**
+   * Fallback when webhook payload omits order_id — fetch tracker from Safepay reporter API.
+   */
+  static async fetchTrackerBookingId(
+    trackerToken: string
+  ): Promise<number | null> {
+    const config = getSafepayConfig();
+    const path = `/reporter/api/v1/payments/${encodeURIComponent(trackerToken)}`;
+
+    try {
+      const response = await fetch(`${config.apiHost}${path}`, {
+        headers: {
+          Accept: "application/json",
+          "x-sfpy-merchant-secret": config.secretKey,
+        },
+      });
+
+      if (!response.ok) return null;
+
+      const json = (await response.json()) as {
+        data?: { metadata?: unknown; state?: string };
+      };
+
+      return bookingIdFromMetadata(json.data?.metadata);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Safepay hosted checkout webhooks use HMAC-SHA512 over the raw JSON body
    * with the webhook secret from the Safepay dashboard (sfpy-php SDK scheme).
    */
   static verifyWebhookSignature(
     rawBody: Buffer,
     signatureHeader: string | undefined
-  ): { ok: true } | { ok: false; reason: "missing_secret" | "missing_signature" | "invalid_signature" } {
+  ):
+    | { ok: true }
+    | {
+        ok: false;
+        reason:
+          | "missing_secret"
+          | "missing_signature"
+          | "invalid_signature";
+      } {
     const secret = getSafepayConfig().webhookSecret;
     if (!secret) {
       return { ok: false, reason: "missing_secret" };
@@ -194,47 +344,59 @@ export class SafepayService {
 
   static parseWebhookPayload(payload: unknown): ParsedSafepayWebhook {
     const body = (payload ?? {}) as Record<string, unknown>;
-    const eventType = String(body.type ?? body.event_type ?? "");
+    const eventType = String(
+      body.type ?? body.event_type ?? body.eventType ?? ""
+    );
 
-    if (body.data && typeof body.data === "object") {
-      const data = body.data as Record<string, unknown>;
-      const metadata = (data.metadata ?? {}) as Record<string, unknown>;
-      const bookingId =
-        bookingIdFromMetadata(metadata) ??
-        parseBookingId(data.order_id ?? metadata.order_id);
-      const tracker = String(data.tracker ?? data.token ?? "") || null;
-      const state = String(data.state ?? "").toUpperCase();
-      const isPaymentSuccess =
-        eventType === "payment.succeeded" ||
-        eventType === "payment.completed" ||
-        data.success === true ||
-        state === "PAID" ||
-        state === "TRACKER_ENDED";
+    const data = body.data;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const dataRecord = data as Record<string, unknown>;
+      const state = String(dataRecord.state ?? "").toUpperCase();
+      const bookingId = collectBookingIdCandidates(body, dataRecord);
+      const tracker =
+        extractTracker(dataRecord.tracker) ??
+        extractTracker(dataRecord.token) ??
+        extractTracker(body.tracker);
 
-      return { eventType, isPaymentSuccess, bookingId, tracker };
+      return {
+        eventType,
+        isPaymentSuccess: isPaymentSuccessEvent(eventType, state, {
+          success: dataRecord.success,
+        }),
+        bookingId,
+        tracker,
+        rawMetadata: dataRecord.metadata ?? null,
+      };
     }
 
-    if (body.notification && typeof body.notification === "object") {
-      const notification = body.notification as Record<string, unknown>;
-      const metadata = (notification.metadata ?? {}) as Record<string, unknown>;
-      const bookingId =
-        bookingIdFromMetadata(metadata) ??
-        parseBookingId(notification.reference ?? body.order_id);
-      const tracker = String(notification.tracker ?? "") || null;
-      const state = String(notification.state ?? "").toUpperCase();
-      const isPaymentSuccess =
-        eventType === "payment.succeeded" ||
-        eventType === "payment:created" ||
-        state === "PAID";
+    const notification = body.notification;
+    if (notification && typeof notification === "object") {
+      const note = notification as Record<string, unknown>;
+      const state = String(note.state ?? "").toUpperCase();
+      const bookingId = collectBookingIdCandidates(body, note);
+      const tracker =
+        extractTracker(note.tracker) ?? extractTracker(body.tracker);
 
-      return { eventType, isPaymentSuccess, bookingId, tracker };
+      return {
+        eventType,
+        isPaymentSuccess: isPaymentSuccessEvent(eventType, state, {
+          success: note.success,
+        }),
+        bookingId,
+        tracker,
+        rawMetadata: note.metadata ?? null,
+      };
     }
 
+    const state = String(body.state ?? "").toUpperCase();
     return {
       eventType,
-      isPaymentSuccess: false,
-      bookingId: null,
-      tracker: null,
+      isPaymentSuccess: isPaymentSuccessEvent(eventType, state, {
+        success: body.success,
+      }),
+      bookingId: collectBookingIdCandidates(body, body),
+      tracker: extractTracker(body.tracker),
+      rawMetadata: body.metadata ?? null,
     };
   }
 }

@@ -7,6 +7,7 @@ import { PaymentMethod } from "../enum/paymentMethod.enum";
 import { PaymentStatus } from "../enum/paymentStatus.enum";
 import { ApprovalService } from "./approval.service";
 import { notifyBookingConfirmed } from "../email/notifications";
+import { logger } from "../config/logger";
 
 export type ConfirmPaymentResult = {
   ok: boolean;
@@ -58,15 +59,94 @@ export class PaymentService {
     method: PaymentMethod;
     externalTransactionId?: string;
   }): Promise<ConfirmPaymentResult> {
+    logger.info(
+      {
+        bookingId: input.bookingId,
+        attendeeId: input.attendeeId,
+        externalTransactionId: input.externalTransactionId ?? null,
+      },
+      "confirmPayment invoked"
+    );
+
+    let emailAttempted = false;
+    let emailSent = false;
+
     const result = await this.paymentRepository.manager.transaction(
       async (manager) => this.runConfirmPayment(manager, input)
     );
 
     if (result.ok && result.newlyConfirmed && result.booking && result.payment) {
-      await notifyBookingConfirmed(result.booking, result.payment);
+      emailAttempted = true;
+      try {
+        await notifyBookingConfirmed(result.booking, result.payment);
+        emailSent = true;
+      } catch (err) {
+        logger.error({ err, bookingId: input.bookingId }, "confirmPayment email failed");
+      }
     }
 
+    logger.info(
+      {
+        bookingId: input.bookingId,
+        ok: result.ok,
+        newlyConfirmed: result.newlyConfirmed === true,
+        code: result.ok ? undefined : result.code,
+        emailAttempted,
+        emailSent,
+      },
+      "confirmPayment finished"
+    );
+
     return result;
+  }
+
+  /** Persist Safepay tracker on a pending payment row so webhooks can resolve the booking. */
+  async ensurePendingSafepayPayment(input: {
+    bookingId: number;
+    trackerToken: string;
+    amount: number;
+  }): Promise<{ created: boolean; updated: boolean }> {
+    const existing = await this.paymentRepository
+      .createQueryBuilder("payment")
+      .where('payment."bookingId" = :bookingId', { bookingId: input.bookingId })
+      .getOne();
+
+    if (existing) {
+      if (
+        existing.status === PaymentStatus.PENDING &&
+        existing.transactionId !== input.trackerToken
+      ) {
+        existing.transactionId = input.trackerToken;
+        await this.paymentRepository.save(existing);
+        return { created: false, updated: true };
+      }
+      return { created: false, updated: false };
+    }
+
+    await this.paymentRepository
+      .createQueryBuilder()
+      .insert()
+      .into(Payment)
+      .values({
+        amount: input.amount,
+        method: PaymentMethod.CARD,
+        status: PaymentStatus.PENDING,
+        transactionId: input.trackerToken,
+        booking: { id: input.bookingId },
+      })
+      .execute();
+
+    return { created: true, updated: false };
+  }
+
+  async findBookingIdByTracker(trackerToken: string): Promise<number | null> {
+    const payment = await this.paymentRepository
+      .createQueryBuilder("payment")
+      .leftJoinAndSelect("payment.booking", "booking")
+      .where("payment.transactionId = :trackerToken", { trackerToken })
+      .getOne();
+
+    return payment?.booking?.id ?? null;
   }
 
   private async runConfirmPayment(
@@ -87,7 +167,22 @@ export class PaymentService {
         relations: ["attendee", "event"],
       });
 
+      const audit: Record<string, unknown> = {
+        bookingId: input.bookingId,
+        bookingFound: Boolean(booking),
+        paymentFound: false,
+        paymentCreated: false,
+        bookingStatusBefore: booking?.status ?? null,
+        paymentStatusBefore: null as PaymentStatus | null,
+        bookingStatusAfter: null as BookingStatus | null,
+        paymentStatusAfter: null as PaymentStatus | null,
+        ticketCountBefore: null as number | null,
+        ticketCountAfter: null as number | null,
+        newlyConfirmed: false,
+      };
+
       if (!booking) {
+        logger.warn(audit, "confirmPayment booking not found");
         return { ok: false, code: "not_found", message: "Booking not found" };
       }
 
@@ -108,12 +203,18 @@ export class PaymentService {
         .where('payment."bookingId" = :bookingId', { bookingId: booking.id })
         .getOne();
 
+      audit.paymentFound = Boolean(payment);
+      audit.paymentStatusBefore = payment?.status ?? null;
+
       const bookingStatus = String(booking.status).toLowerCase();
 
       if (
         bookingStatus === BookingStatus.CONFIRMED &&
         payment?.status === PaymentStatus.SUCCESS
       ) {
+        audit.bookingStatusAfter = booking.status;
+        audit.paymentStatusAfter = payment.status;
+        logger.info(audit, "confirmPayment idempotent — already confirmed");
         return { ok: true, payment, booking };
       }
 
@@ -149,8 +250,11 @@ export class PaymentService {
       });
 
       if (!event) {
+        logger.warn(audit, "confirmPayment event not found after lock");
         return { ok: false, code: "not_found", message: "Event not found" };
       }
+
+      audit.ticketCountBefore = event.availableTickets;
 
       if (event.availableTickets < booking.quantity) {
         return {
@@ -175,6 +279,12 @@ export class PaymentService {
           where: { id: booking.id },
           relations: ["event", "attendee", "payment"],
         });
+
+        audit.bookingStatusAfter = savedBooking?.status ?? booking.status;
+        audit.paymentStatusAfter = payment.status;
+        audit.ticketCountAfter = event.availableTickets;
+        audit.newlyConfirmed = true;
+        logger.info(audit, "confirmPayment repaired inconsistent state");
 
         return {
           ok: true,
@@ -208,6 +318,7 @@ export class PaymentService {
         payment = paymentRepo.create(
           insertResult.raw[0] as Partial<Payment>
         );
+        audit.paymentCreated = true;
       }
 
       booking.status = BookingStatus.CONFIRMED;
@@ -224,6 +335,12 @@ export class PaymentService {
         where: { id: booking.id },
         relations: ["event", "attendee", "payment"],
       });
+
+      audit.bookingStatusAfter = savedBooking?.status ?? booking.status;
+      audit.paymentStatusAfter = savedPayment?.status ?? payment.status;
+      audit.ticketCountAfter = event.availableTickets;
+      audit.newlyConfirmed = true;
+      logger.info(audit, "confirmPayment succeeded");
 
       return {
         ok: true,

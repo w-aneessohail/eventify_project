@@ -97,4 +97,22 @@ export default class OtpTokens {
     await repo.save(gotUser);
     return true;
   }
+
+  /** Validate OTP without consuming — used before navigating to reset-password. */
+  static async verifyOnly(params: {
+    userId: number;
+    purpose: OtpPurpose;
+    code: number;
+  }): Promise<boolean> {
+    const { userId, purpose, code } = params;
+    const repo = AppDataSource.getRepository(OtpToken);
+
+    const token = await repo.findOne({
+      where: { purpose, otpCode: code, user: { id: userId }, consumedAt: IsNull() },
+    });
+
+    if (!token) return false;
+    if (token.expiresAt.getTime() < Date.now()) return false;
+    return true;
+  }
 }

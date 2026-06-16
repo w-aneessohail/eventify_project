@@ -234,6 +234,28 @@ export class AuthController {
     });
   }
 
+  static async validateResetOtp(req: Request, res: Response) {
+    const { email, otp } = req.body || {};
+    if (!email || !otp) {
+      return res.status(400).json({ message: "email and otp are required" });
+    }
+
+    const user = await userRepository.findByEmail(email);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const valid = await OtpTokens.verifyOnly({
+      userId: user.id,
+      purpose: OtpPurpose.RESET_PASSWORD,
+      code: Number(otp),
+    });
+
+    if (!valid) {
+      return res.status(400).json({ message: "Invalid or expired OTP" });
+    }
+
+    return res.status(200).json({ message: "OTP is valid" });
+  }
+
   static async forgotPassword(req: Request, res: Response) {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ message: "email is required" });
