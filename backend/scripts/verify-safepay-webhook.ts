@@ -17,8 +17,21 @@ import { PaymentMethod } from "../src/enum/paymentMethod.enum";
 import { PaymentStatus } from "../src/enum/paymentStatus.enum";
 import { BookingService } from "../src/service/booking.service";
 
-function signWebhook(body: string, secret: string): string {
+function signWebhookLegacy(body: string, secret: string): string {
   return crypto.createHmac("sha512", secret).update(body, "utf8").digest("hex");
+}
+
+function signWebhookV2(
+  body: string,
+  timestamp: string,
+  secret: string
+): string {
+  const signedPayload = `${timestamp}.${body}`;
+  const hex = crypto
+    .createHmac("sha256", secret)
+    .update(signedPayload, "utf8")
+    .digest("hex");
+  return `sha256=${hex}`;
 }
 
 async function main() {
@@ -38,13 +51,28 @@ async function main() {
     },
   });
 
-  const sig = signWebhook(payload, process.env.SAFEPAY_WEBHOOK_SECRET!);
+  const sig = signWebhookLegacy(payload, process.env.SAFEPAY_WEBHOOK_SECRET!);
   const verification = SafepayService.verifyWebhookSignature(
     Buffer.from(payload, "utf8"),
     sig
   );
   if (verification.ok === false) {
-    throw new Error(`Webhook signature verification failed: ${verification.reason}`);
+    throw new Error(`Legacy webhook signature verification failed: ${verification.reason}`);
+  }
+
+  const v2Timestamp = "2026-06-17T06:50:00.000Z";
+  const v2Sig = signWebhookV2(
+    payload,
+    v2Timestamp,
+    process.env.SAFEPAY_WEBHOOK_SECRET!
+  );
+  const v2Verification = SafepayService.verifyWebhookSignature(
+    Buffer.from(payload, "utf8"),
+    v2Sig,
+    v2Timestamp
+  );
+  if (v2Verification.ok === false) {
+    throw new Error(`V2 webhook signature verification failed: ${v2Verification.reason}`);
   }
 
   const parsed = SafepayService.parseWebhookPayload(JSON.parse(payload));
@@ -71,7 +99,7 @@ async function main() {
     throw new Error("V2 notification webhook parsing failed");
   }
 
-  console.log("✓ Webhook signature and payload parsing (legacy + V2)");
+  console.log("✓ Webhook signature verification (legacy SHA-512 + V2 SHA-256)");
 
   await dataSource.initialize();
   const bookingRepo = dataSource.getRepository(Booking);

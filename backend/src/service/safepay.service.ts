@@ -305,12 +305,17 @@ export class SafepayService {
   }
 
   /**
-   * Safepay hosted checkout webhooks use HMAC-SHA512 over the raw JSON body
-   * with the webhook secret from the Safepay dashboard (sfpy-php SDK scheme).
+   * Verifies Safepay webhook signatures.
+   *
+   * V2 (Webhook Logs V2): HMAC-SHA256 over `timestamp + '.' + raw_body`,
+   * header `sha256=<hex>`.
+   *
+   * Legacy (sfpy-php): HMAC-SHA512 over raw body, bare 128-char hex header.
    */
   static verifyWebhookSignature(
     rawBody: Buffer,
-    signatureHeader: string | undefined
+    signatureHeader?: string,
+    timestampHeader?: string
   ):
     | { ok: true }
     | {
@@ -329,17 +334,38 @@ export class SafepayService {
       return { ok: false, reason: "missing_signature" };
     }
 
-    const payload = rawBody.toString("utf8");
-    const expected = crypto
-      .createHmac("sha512", secret)
-      .update(payload, "utf8")
-      .digest("hex");
+    const rawBodyUtf8 = rawBody.toString("utf8");
+    const trimmedHeader = signatureHeader.trim();
+    const trimmedTimestamp = timestampHeader?.trim();
 
-    if (!secureCompare(expected, signatureHeader.trim())) {
+    if (
+      trimmedHeader.toLowerCase().startsWith("sha256=") &&
+      trimmedTimestamp
+    ) {
+      const receivedHex = trimmedHeader.slice("sha256=".length);
+      const signedPayload = `${trimmedTimestamp}.${rawBodyUtf8}`;
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(signedPayload, "utf8")
+        .digest("hex");
+
+      if (secureCompare(expected, receivedHex)) {
+        return { ok: true };
+      }
+
       return { ok: false, reason: "invalid_signature" };
     }
 
-    return { ok: true };
+    const expected = crypto
+      .createHmac("sha512", secret)
+      .update(rawBodyUtf8, "utf8")
+      .digest("hex");
+
+    if (secureCompare(expected, trimmedHeader)) {
+      return { ok: true };
+    }
+
+    return { ok: false, reason: "invalid_signature" };
   }
 
   static parseWebhookPayload(payload: unknown): ParsedSafepayWebhook {

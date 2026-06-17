@@ -143,6 +143,7 @@ export class PaymentController {
   static async handleWebhook(req: Request, res: Response) {
     const rawBody = req.body as Buffer;
     const signature = req.headers["x-sfpy-signature"] as string | undefined;
+    const timestamp = req.headers["x-sfpy-timestamp"] as string | undefined;
     const rawPayloadText = Buffer.isBuffer(rawBody)
       ? rawBody.toString("utf8")
       : "";
@@ -151,7 +152,11 @@ export class PaymentController {
       return res.status(400).json({ message: "Missing webhook body" });
     }
 
-    const verification = SafepayService.verifyWebhookSignature(rawBody, signature);
+    const verification = SafepayService.verifyWebhookSignature(
+      rawBody,
+      signature,
+      timestamp
+    );
     const signatureValid = verification.ok === true;
 
     if (!signatureValid) {
@@ -186,19 +191,13 @@ export class PaymentController {
 
     const parsed = SafepayService.parseWebhookPayload(payload);
     let bookingId = parsed.bookingId;
-    let bookingIdSource: string = bookingId ? "payload" : "none";
 
     logger.info(
       {
         eventType: parsed.eventType,
         tracker: parsed.tracker,
         bookingId,
-        orderId: bookingId,
-        metadata: parsed.rawMetadata,
-        rawPayload: payload,
-        isPaymentSuccess: parsed.isPaymentSuccess,
         signatureValid,
-        confirmPaymentCalled: false,
       },
       "Safepay webhook received"
     );
@@ -213,7 +212,6 @@ export class PaymentController {
       );
       if (fromPayment) {
         bookingId = fromPayment;
-        bookingIdSource = "pending_payment_tracker";
       }
     }
 
@@ -223,17 +221,12 @@ export class PaymentController {
       );
       if (fromTracker) {
         bookingId = fromTracker;
-        bookingIdSource = "safepay_tracker_api";
       }
     }
 
     if (!bookingId) {
       logger.warn(
-        {
-          eventType: parsed.eventType,
-          tracker: parsed.tracker,
-          metadata: parsed.rawMetadata,
-        },
+        { eventType: parsed.eventType, tracker: parsed.tracker },
         "Webhook missing order_id after all resolution attempts"
       );
       return res.status(200).json({ received: true, action: "no_booking_id" });
@@ -241,15 +234,13 @@ export class PaymentController {
 
     const booking = await bookingRepository.findById(bookingId);
     if (!booking?.attendee?.id) {
-      logger.warn({ bookingId, bookingIdSource }, "Webhook booking not found");
+      logger.warn({ bookingId }, "Webhook booking not found");
       return res.status(200).json({ received: true, action: "booking_not_found" });
     }
 
     let result;
-    let confirmPaymentCalled = false;
 
     try {
-      confirmPaymentCalled = true;
       result = await paymentRepository.confirmPayment({
         bookingId,
         attendeeId: booking.attendee.id,
@@ -263,7 +254,6 @@ export class PaymentController {
           eventType: parsed.eventType,
           tracker: parsed.tracker,
           bookingId,
-          bookingIdSource,
           stack: err instanceof Error ? err.stack : undefined,
         },
         "Safepay webhook confirmPayment threw"
@@ -279,15 +269,11 @@ export class PaymentController {
         eventType: parsed.eventType,
         tracker: parsed.tracker,
         bookingId,
-        bookingIdSource,
-        metadata: parsed.rawMetadata,
         signatureValid,
-        confirmPaymentCalled,
         confirmPaymentResult: {
           ok: result.ok,
           newlyConfirmed: result.newlyConfirmed === true,
           code: result.ok ? undefined : result.code,
-          message: result.ok ? undefined : result.message,
         },
       },
       result.ok
